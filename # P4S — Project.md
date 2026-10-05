@@ -1,136 +1,60 @@
-# P4S — Project
+# MAX — Windows Desktop Companion
 
-## Stack
-| Layer | Choice | Why |
+## Product direction
+MAX is a small, visible character that lives on the Windows desktop. It sleeps until called by voice, then answers in a casual tone and can carry out a few explicit, safe commands. The character is the product; this is not a general productivity or project-management app.
+
+Agreed first-version scope:
+- Windows-native desktop window, always-on-top over ordinary applications, draggable across monitors, with a tray icon and optional start-with-Windows setting.
+- Voice-only interaction. While asleep, listen for the wake phrase “Max”; after waking, accept speech for a short conversation and return to sleep after 40 seconds of silence.
+- Open/close a small named list of applications; closing requests are graceful and never force-kill an app.
+- Open Google or YouTube search results in the user's default browser. MAX itself does not read or summarize the results.
+- Short scripted small talk. No open-ended LLM in the first version.
+- No cloud AI, API keys, Ollama, model download, shell execution, screen reading, or file access.
+
+## Windows implementation
+| Layer | Choice | Reason |
 |---|---|---|
-| Shell | Tauri 2 | Small binary, low idle RAM. Frameless + transparent + always-on-top. |
-| UI | Svelte 5 + TypeScript + Vite | Fastest to animate sprites, tiny runtime. |
-| Backend | Rust (inside Tauri) | Persistence, scheduling, window control, adapters. |
-| Data | SQLite via `sqlx` | One file, no server, easy backup. |
-| Brain | Ollama over localhost HTTP | OpenAI-compatible, model-swappable. |
-| Voice | Windows SAPI / macOS `say` | Zero deps, offline, instant. |
-| Notify | `tauri-plugin-notification` | Native reminder popups. |
+| Desktop shell | WPF on .NET 8 for Windows | Native Windows GUI, transparent/topmost window, no terminal at runtime |
+| Voice recognition | Windows Desktop Speech (`System.Speech`) | Uses an English recognizer installed in Windows; no separate AI service |
+| Speech output | Windows `SpeechSynthesizer` / installed SAPI voices | Offline OS speech output |
+| Command brain | Deterministic C# command router | Fast, inspectable, no generative model or external provider |
+| Process actions | Explicit app allowlist + graceful window close | No arbitrary shell commands or force termination |
+| Search | Open encoded Google/YouTube result URLs in default browser | No search API key; browser handles internet access |
+| Preferences | Current-user Windows registry for optional startup; no conversation database | Minimal persistence in the first version |
+| Build | Self-contained `win-x64` publish via GitHub Actions | User can download and double-click MAX.exe without a terminal or .NET install |
 
-Rust crates: `tauri`, `tauri-plugin-global-shortcut`, `tauri-plugin-notification`,
-`tauri-plugin-single-instance`, `sqlx`, `reqwest`, `tokio`, `serde`, `serde_json`,
-`chrono`, `uuid`, `thiserror`, `tracing`.
+The Windows speech recognizer is for turning speech into text; it is not MAX's conversational AI. It must already be available/enabled in Windows. Recognition accuracy depends on the installed speech language, microphone, noise, and speaker; perfect transcription cannot be promised.
 
-## File tree
-p4s/
-├── src/                                  # Svelte frontend
-│   ├── lib/
-│   │   ├── components/
-│   │   │   ├── Pet.svelte                # sprite/canvas renderer + states
-│   │   │   ├── ChatPanel.svelte
-│   │   │   ├── TodoList.svelte
-│   │   │   ├── ReminderBubble.svelte
-│   │   │   ├── Settings.svelte
-│   │   │   └── Tray menu lives in Rust
-│   │   ├── stores/                       # svelte stores
-│   │   │   ├── chat.ts                   # messages, streaming state
-│   │   │   ├── todos.ts
-│   │   │   ├── settings.ts
-│   │   │   └── pet.ts                    # mood, position, animation
-│   │   └── api.ts                        # typed wrappers over Tauri commands
-│   └── routes/+page.svelte
-└── src-tauri/
-    ├── Cargo.toml
-    ├── tauri.conf.json                   # transparent, decorations:false, alwaysOnTop
-    ├── capabilities/default.json
-    └── src/
-        ├── main.rs                       # setup, single-instance, autostart
-        ├── commands/
-        │   ├── mod.rs
-        │   ├── chat.rs                   # send_message, abort, clear
-        │   ├── todos.rs                  # add, list, complete, remove
-        │   ├── reminders.rs              # schedule, snooze, list
-        │   ├── settings.rs
-        │   └── window.rs                 # move, hide, show, pin, size
-        ├── assistant/
-        │   ├── mod.rs
-        │   ├── provider.rs               # trait AssistantProvider
-        │   ├── ollama.rs                 # streaming chat impl
-        │   ├── prompt.rs                 # system prompt + personality states
-        │   ├── orchestrator.rs           # turn loop, tool dispatch
-        │   └── tools.rs                  # allowlisted tool schema + validation
-        ├── store/
-        │   ├── mod.rs
-        │   ├── db.rs                     # pool, migrations
-        │   └── models.rs                 # Todo, Reminder, Memory, Settings
-        ├── reminders/
-        │   ├── mod.rs
-        │   ├── scheduler.rs              # tokio interval, fires due reminders
-        │   └── notifications.rs
-        ├── speech/
-        │   ├── mod.rs                    # trait Speak
-        │   ├── windows_sapi.rs           # sapi-lite
-        │   └── macos_say.rs              # `say -v <voice> -r <rate>`
-        └── desktop/
-            ├── mod.rs
-            ├── shortcuts.rs              # toggle chat, add todo, summon
-            └── tray.rs
+## Behavior and safety
+- Sleep mode keeps only the wake-word grammar active. Once woken, the dictation grammar is enabled for the active session. Any nearby person who says the wake phrase can wake MAX in v1; voice identity verification is not included.
+- No audio or transcript is saved by MAX. Speech stays in the Windows speech stack; command handling is local.
+- A search command opens a browser page; it does not grant MAX access to browser contents.
+- App launches use named shortcuts. Closing sends a normal close request; unsaved-work dialogs remain under the user's control.
+- A tray menu can pause the microphone, show MAX, enable start-with-Windows, or exit.
+- The always-on-top pet works over ordinary desktop windows, but Windows secure surfaces (UAC, lock screen) and some exclusive full-screen apps cannot be covered.
 
-## Data model (SQLite)
-todos      id, title, done, created_at, done_at, due_at NULL
-reminders  id, title, fire_at, fired, snoozed_to NULL, pet_line NULL
-memories   id, key, value, created_at        -- "name" -> "Sam"
-settings   key, value (JSON)                 -- model, voice, rate, roam, pinned
+## Current prototype layout
+```text
+MAX.Windows/
+├── Assistant/
+│   ├── CommandRouter.cs
+│   └── WindowsVoiceAssistant.cs
+├── App.xaml / App.xaml.cs
+├── MainWindow.xaml / MainWindow.xaml.cs
+├── MAX.Windows.csproj
+└── Build-MAX.cmd
+.github/workflows/windows-build.yml
+```
 
-## Tool set exposed to the model
-Allowlisted, validated in Rust, args parsed with serde.
-- `todo_add(title, due_at?)`
-- `todo_list(filter?)`
-- `todo_complete(id)`
-- `reminder_add(title, fire_at, pet_line?)`
-- `remember(key, value)`   -- only on explicit user request
-
-Rule: the model may only *propose* these. Every write goes through the
-same validation as a manual click, and destructive actions confirm in UI.
-
-## Shortcuts (pick unused combos; registration can fail)
-- `Ctrl+Alt+Space`  summon / dismiss chat
-- `Ctrl+Alt+T`      quick-add todo
-- `Ctrl+Alt+D`      toggle desktop roam (drag vs free-float)
-- `Alt+Esc`         hide pet entirely
+## Character assets
+The supplied `pikachu.zip` contains a 3D FBX mesh and UV texture maps, not an animated sprite sheet. The current small WPF pet is a vector stand-in; importing, framing, animating, and testing the supplied 3D asset is a dedicated character milestone. The user has approved Pikachu as the intended character art.
 
 ## Roadmap
-### Phase 1 — Shell (2–3 days)
-Transparent always-on-top window, draggable, tray menu, hide/show shortcut.
-**Test the packaged build on both OSes early** — transparency in dev
-mode has shipped broken in bundled macOS builds before.
+1. **Windows pet + command MVP:** visible sleeping character, wake phrase, spoken replies, safe app open/close, browser searches, tray controls, self-contained build.
+2. **Windows voice QA:** test on the target PC, adjust installed-language selection, confidence thresholds, wake-word latency, and noise behavior.
+3. **Character integration:** import and frame the supplied FBX, create idle/sleep/listening/speaking animation states, test transparency and GPU use on Intel Iris Xe.
+4. **Companion depth:** improve conversational behavior and memory only after the voice-first shell is reliable and privacy boundaries are agreed.
+5. **Original model research (separate project):** investigate whether a small original model can be trained from a deliberately selected dataset. Do not promise a capable general chat model from the target PC's 8 GB RAM / integrated graphics.
 
-### Phase 2 — Useful without AI (2 days)
-SQLite + migrations, todos, one-time reminders, notifications,
-settings file. Milestone: the app earns its place with the LLM unplugged.
-
-### Phase 3 — Chat brain (2–3 days)
-Ollama connection settings, streaming replies, system prompt with
-personality states, tool loop with validation, T3 chat bar.
-Model default: Qwen3 4B (non-thinking) — small, fast, good at casual
-multi-turn chat. Allow any Ollama model.
-
-### Phase 4 — Character (3–4 days)
-Sprite state machine, idle animations, speech bubbles, mood driven by
-time of day and streak, OS TTS with a voice picker, roam/return-to-corner.
-
-### Phase 5 — Polish (ongoing)
-Onboarding, autostart, error states (model down, db locked), multi-monitor
-edge, per-pixel click-through, character pack loader (drop in sprites).
-
-## Risks
-| Risk | Mitigation |
-|---|---|
-| Transparent window breaks in packaged macOS build | Test in phase 1, not phase 4 |
-| Clicks blocked by empty window area | Per-pixel alpha hit test; fallback to compact hit box |
-| Clicks blocked by pet | Suspend click-through while hovered/chat open |
-| Model too slow for casual chat | 4B non-thinking model, cap reply length, stream |
-| Global shortcut already taken | Detect failure, notify, offer remap |
-| Pet gets in the way of work | Roam toggle, quiet hours, never steal focus |
-
-## Non-obvious things to figure out early
-1. How does the pet ask for attention without stealing focus?
-   (Notification balloon vs. a bubble that fades in — pick one.)
-2. Does P4S interrupt mid-task, or queue? (Recommend: queue until idle.)
-3. What's the dismissal ritual? A streak counter is cheap motivation.
-4. Single instance, always. A second pet that can't see the first
-   one's todos is a bug users will hit in week one.
+## Hardware expectation
+An 11th-gen Intel i5 with 8 GB RAM and integrated Iris Xe graphics is sufficient for the desktop pet, lightweight local speech recognition, app launching, and opening browser searches. It is not suitable for training a high-quality general conversational LLM from scratch with low latency. MAX v1 therefore prioritizes immediate command responsiveness and clear boundaries instead of pretending to provide “perfect” open-ended answers.
