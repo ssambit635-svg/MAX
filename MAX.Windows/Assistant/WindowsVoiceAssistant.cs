@@ -34,8 +34,11 @@ public sealed class WindowsVoiceAssistant : IDisposable
     public event Action<string>? StatusChanged;
     public event Action<string>? Heard;
     public event Action<string>? Replied;
+    public event Action<int>? MicrophoneLevelChanged;
 
     public bool IsPaused => _paused;
+
+    public void PublishCurrentStatus() => RaiseState();
 
     public WindowsVoiceAssistant(CommandRouter commands)
     {
@@ -43,7 +46,7 @@ public sealed class WindowsVoiceAssistant : IDisposable
         var recognizerInfo = FindWindowsRecognizer();
         _recognizer = new SpeechRecognitionEngine(recognizerInfo);
 
-        var wakeBuilder = new GrammarBuilder(new Choices("Max"))
+        var wakeBuilder = new GrammarBuilder(new Choices("Max", "Hey Max"))
         {
             Culture = recognizerInfo.Culture
         };
@@ -72,6 +75,7 @@ public sealed class WindowsVoiceAssistant : IDisposable
         _recognizer.LoadGrammar(_wakeGrammar);
         _recognizer.LoadGrammar(_dictationGrammar);
         _recognizer.SpeechRecognized += Recognizer_SpeechRecognized;
+        _recognizer.AudioLevelUpdated += Recognizer_AudioLevelUpdated;
         _recognizer.RecognizerUpdateReached += Recognizer_RecognizerUpdateReached;
         _recognizer.RecognizeCompleted += Recognizer_RecognizeCompleted;
         _recognizer.EndSilenceTimeout = TimeSpan.FromMilliseconds(850);
@@ -88,6 +92,7 @@ public sealed class WindowsVoiceAssistant : IDisposable
             return;
 
         _paused = paused;
+        var startFailed = false;
         if (paused)
         {
             _awake = false;
@@ -103,7 +108,11 @@ public sealed class WindowsVoiceAssistant : IDisposable
             if (recognitionRunning)
             {
                 try { _recognizer.RecognizeAsyncCancel(); }
-                catch (InvalidOperationException) { }
+                catch (InvalidOperationException)
+                {
+                    try { _recognizer.SetInputToNull(); }
+                    catch (InvalidOperationException) { }
+                }
             }
             else
             {
@@ -113,11 +122,20 @@ public sealed class WindowsVoiceAssistant : IDisposable
         }
         else
         {
-            StartRecognition();
+            try
+            {
+                StartRecognition();
+            }
+            catch (Exception ex)
+            {
+                startFailed = true;
+                StatusChanged?.Invoke($"OFFLINE|Windows could not start voice input: {ex.Message}");
+            }
         }
 
         RequestGrammarRefresh();
-        RaiseState();
+        if (!startFailed)
+            RaiseState();
     }
 
     private void StartRecognition()
@@ -127,17 +145,9 @@ public sealed class WindowsVoiceAssistant : IDisposable
             if (_disposed || _paused || _recognitionRunning)
                 return;
 
-            try
-            {
-                _recognizer.SetInputToDefaultAudioDevice();
-                _recognizer.RecognizeAsync(RecognizeMode.Multiple);
-                _recognitionRunning = true;
-            }
-            catch (InvalidOperationException)
-            {
-                // A cancel/resume can race with the recognizer's completion event.
-                // RecognizeCompleted will make another start attempt once it is idle.
-            }
+            _recognizer.SetInputToDefaultAudioDevice();
+            _recognizer.RecognizeAsync(RecognizeMode.Multiple);
+            _recognitionRunning = true;
         }
     }
 
@@ -158,14 +168,23 @@ public sealed class WindowsVoiceAssistant : IDisposable
             }
         }
 
+        if (!shouldRestart)
+            return;
+
         if (e.Error is not null)
         {
-            StatusChanged?.Invoke("OFFLINE|Windows speech recognition stopped. Resume it from MAX's tray menu or restart MAX.");
+            StatusChanged?.Invoke($"OFFLINE|Windows speech recognition stopped: {e.Error.Message}");
             return;
         }
 
-        if (shouldRestart)
+        try
+        {
             StartRecognition();
+        }
+        catch (Exception ex)
+        {
+            StatusChanged?.Invoke($"OFFLINE|Windows could not restart voice input: {ex.Message}");
+        }
     }
 
     private static RecognizerInfo FindWindowsRecognizer()
@@ -182,6 +201,12 @@ public sealed class WindowsVoiceAssistant : IDisposable
             "Windows has no desktop speech recognizer installed. Add an English speech language in Windows Settings, then restart MAX.");
     }
 
+    private void Recognizer_AudioLevelUpdated(object? sender, AudioLevelUpdatedEventArgs e)
+    {
+        if (!_disposed && !_paused)
+            MicrophoneLevelChanged?.Invoke(e.AudioLevel);
+    }
+
     private void Recognizer_SpeechRecognized(object? sender, SpeechRecognizedEventArgs e)
     {
         if (_disposed || _paused || _speaking || e.Result is null)
@@ -189,7 +214,7 @@ public sealed class WindowsVoiceAssistant : IDisposable
 
         if (e.Result.Grammar.Name == WakeGrammarName)
         {
-            if (_awake || e.Result.Confidence < 0.48f)
+            if (_awake || e.Result.Confidence < 0.20f)
                 return;
 
             _awake = true;
@@ -200,7 +225,7 @@ public sealed class WindowsVoiceAssistant : IDisposable
             return;
         }
 
-        if (!_awake || e.Result.Grammar.Name != DictationGrammarName || e.Result.Confidence < 0.38f)
+        if (!_awake || e.Result.Grammar.Name != DictationGrammarName || e.Result.Confidence < 0.25f)
             return;
 
         var transcript = e.Result.Text.Trim();
@@ -321,6 +346,8 @@ public sealed class WindowsVoiceAssistant : IDisposable
         _sleepTimer.Dispose();
 
         try { _recognizer.SpeechRecognized -= Recognizer_SpeechRecognized; }
+        catch (InvalidOperationException) { }
+        try { _recognizer.AudioLevelUpdated -= Recognizer_AudioLevelUpdated; }
         catch (InvalidOperationException) { }
         try { _recognizer.RecognizerUpdateReached -= Recognizer_RecognizerUpdateReached; }
         catch (InvalidOperationException) { }

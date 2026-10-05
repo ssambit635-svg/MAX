@@ -34,11 +34,14 @@ public partial class MainWindow : Window
             _voiceAssistant.StatusChanged += VoiceAssistant_StatusChanged;
             _voiceAssistant.Heard += VoiceAssistant_Heard;
             _voiceAssistant.Replied += VoiceAssistant_Replied;
+            _voiceAssistant.MicrophoneLevelChanged += VoiceAssistant_MicrophoneLevelChanged;
+            _voiceAssistant.PublishCurrentStatus();
         }
         catch (Exception ex)
         {
-            SetVisualState("OFFLINE", "Voice is unavailable. Check Windows speech and microphone settings.");
+            SetVisualState("OFFLINE", "Speech not ready. Check Speech and Microphone settings from the tray, then restart MAX.");
             ModeBadge.Foreground = System.Windows.Media.Brushes.DarkRed;
+            ModeBadge.ToolTip = ex.Message;
             Debug.WriteLine($"MAX voice startup failed: {ex}");
         }
 
@@ -80,6 +83,8 @@ public partial class MainWindow : Window
                 SetVisualState("OFFLINE", "Windows speech is not ready.");
         };
         menu.Items.Add(pauseItem);
+        menu.Items.Add("Microphone settings", null, (_, _) => OpenWindowsSettings("ms-settings:privacy-microphone"));
+        menu.Items.Add("Speech settings", null, (_, _) => OpenWindowsSettings("ms-settings:speech"));
 
         var startupItem = new Forms.ToolStripMenuItem("Start MAX with Windows")
         {
@@ -135,6 +140,21 @@ public partial class MainWindow : Window
                 "PAUSED" or "OFFLINE" => System.Windows.Media.Brushes.DarkRed,
                 _ => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(68, 117, 68))
             };
+            MicLight.Background = mode switch
+            {
+                "PAUSED" or "OFFLINE" => System.Windows.Media.Brushes.IndianRed,
+                "SPEAKING" => System.Windows.Media.Brushes.DodgerBlue,
+                "LISTENING" => System.Windows.Media.Brushes.OrangeRed,
+                _ => System.Windows.Media.Brushes.ForestGreen
+            };
+            MicLight.ToolTip = mode switch
+            {
+                "PAUSED" => "Microphone is paused.",
+                "OFFLINE" => "Speech recognition is not running. Check Windows speech and microphone settings.",
+                "LISTENING" => "MAX is listening to your request.",
+                "SPEAKING" => "MAX is speaking; microphone recognition is paused to avoid hearing itself.",
+                _ => "Microphone is active for the local wake phrase “Max”."
+            };
 
             if (mode is "SLEEPING" or "PAUSED" or "OFFLINE" ||
                 (mode == "LISTENING" && StatusText.Text.StartsWith("Sleeping", StringComparison.Ordinal)))
@@ -142,9 +162,8 @@ public partial class MainWindow : Window
                 StatusText.Text = text;
             }
 
-            var asleep = mode is "SLEEPING" or "PAUSED" or "OFFLINE";
-            OpenEyes.Visibility = asleep ? Visibility.Collapsed : Visibility.Visible;
-            ClosedEyes.Visibility = asleep ? Visibility.Visible : Visibility.Collapsed;
+            SleepIndicator.Visibility = mode == "SLEEPING" ? Visibility.Visible : Visibility.Collapsed;
+            PetImage.Opacity = mode == "OFFLINE" ? 0.78 : 1.0;
         });
     }
 
@@ -165,12 +184,19 @@ public partial class MainWindow : Window
         });
     }
 
+    private void VoiceAssistant_MicrophoneLevelChanged(int level)
+    {
+        Dispatcher.InvokeAsync(() => MicLight.Opacity = level > 4 ? 1.0 : 0.55);
+    }
+
     private void SetVisualState(string mode, string message)
     {
         ModeBadge.Text = mode;
         StatusText.Text = message;
-        OpenEyes.Visibility = Visibility.Collapsed;
-        ClosedEyes.Visibility = Visibility.Visible;
+        MicLight.Background = System.Windows.Media.Brushes.IndianRed;
+        MicLight.ToolTip = "Speech recognition is not running. Check Windows speech and microphone settings.";
+        SleepIndicator.Visibility = Visibility.Collapsed;
+        PetImage.Opacity = 0.78;
     }
 
     private void Root_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -180,6 +206,18 @@ public partial class MainWindow : Window
 
         try { DragMove(); }
         catch (InvalidOperationException) { }
+    }
+
+    private static void OpenWindowsSettings(string page)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(page) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Could not open Windows settings page {page}: {ex.Message}");
+        }
     }
 
     private void ShowPet()

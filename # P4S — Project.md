@@ -47,12 +47,12 @@ MAX.Windows/
 ```
 
 ## Character assets
-The supplied `pikachu.zip` contains a 3D FBX mesh and UV texture maps, not an animated sprite sheet. The current small WPF pet is a vector stand-in; importing, framing, animating, and testing the supplied 3D asset is a dedicated character milestone. The user has approved Pikachu as the intended character art.
+The current app bundles an original transparent 2D moth-kitten mascot in `MAX.Windows/Assets/max-pet.png`. The WPF shell gently bobs the image. The shipped app contains no 3D renderer or external character pack.
 
 ## Roadmap
 1. **Windows pet + command MVP:** visible sleeping character, wake phrase, spoken replies, safe app open/close, browser searches, tray controls, self-contained build.
 2. **Windows voice QA:** test on the target PC, adjust installed-language selection, confidence thresholds, wake-word latency, and noise behavior.
-3. **Character integration:** import and frame the supplied FBX, create idle/sleep/listening/speaking animation states, test transparency and GPU use on Intel Iris Xe.
+3. **Character polish:** add lightweight idle/sleep/listening/speaking animation states to the original 2D mascot; keep the desktop overlay small and low-resource.
 4. **Companion depth:** improve conversational behavior and memory only after the voice-first shell is reliable and privacy boundaries are agreed.
 5. **Original model research (separate project):** investigate whether a small original model can be trained from a deliberately selected dataset. Do not promise a capable general chat model from the target PC's 8 GB RAM / integrated graphics.
 

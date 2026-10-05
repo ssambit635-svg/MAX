@@ -17,4 +17,9 @@
   <ItemGroup>
     <PackageReference Include="System.Speech" Version="8.0.0" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Assets/max-pet.png" />
+    <Resource Include="Assets/max-pet.png" />
+  </ItemGroup>
 </Project>

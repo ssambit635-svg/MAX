@@ -29,7 +29,7 @@ The first version is intentionally not a general-purpose generative AI. It has n
 - Speech output uses an installed Windows voice. Speech recognition quality depends on the Windows language pack, microphone, room noise, and voice; accuracy and latency must be tested on the target PC.
 
 ## Character
-Pikachu is the chosen character art. The supplied ZIP contains an FBX 3D mesh and texture maps, so it needs an import/render/animation step rather than being usable directly as a 2D sprite. The current WPF prototype uses lightweight vector stand-in art until that pipeline is implemented and tested.
+MAX uses an original transparent 2D moth-kitten mascot bundled as `MAX.Windows/Assets/max-pet.png`. The app gently bobs the image. Do not add 3D renderers or external character packs.
 
 ## Future model work
 An original MAX language model is a possible later research milestone, not part of the command MVP. Training requires a well-defined, deliberately chosen dataset, training code, and suitable compute. Do not automatically train on all files on the user's PC. The target machine (i5-1155G7, 8 GB RAM, integrated Intel Iris Xe) can run the pet and voice-command layer but is not a realistic machine for training a capable open-domain language model from scratch.

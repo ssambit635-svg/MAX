@@ -1,3 +1,3 @@
-# Character asset integration
+# MAX pet artwork
 
-`/pikachu.zip` at the repository root contains `source/Pikachu.zip`, which includes `PikachuM.FBX` and its UV texture maps. The current native WPF window draws a small vector placeholder so the command MVP does not need a 3D runtime. The FBX package is not a sprite sheet; a later character milestone should import and render it, establish camera framing, and author idle/listening/speaking animation states before replacing the placeholder.
+`max-pet.png` is the original 2D MAX mascot artwork, bundled directly with the Windows app. The WPF view gently bobs the image; there is no 3D renderer or external character pack. Keep the art lightweight so the pet remains small and low-resource.
