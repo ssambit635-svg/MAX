@@ -55,6 +55,15 @@ public partial class MainWindow : Window
         Top = Math.Max(workArea.Top + 12, workArea.Bottom - Height - 20);
     }
 
+    private void PetImage_ImageFailed(object sender, System.Windows.Media.ExceptionRoutedEventArgs e)
+    {
+        PetImage.Visibility = Visibility.Collapsed;
+        PetFallback.Visibility = Visibility.Visible;
+        StatusText.Text = "MAX's picture did not load. Please redownload the latest build.";
+        ModeBadge.ToolTip = e.ErrorException?.Message;
+        Debug.WriteLine($"MAX pet image failed to load: {e.ErrorException}");
+    }
+
     private void StartIdleAnimation()
     {
         var bob = new DoubleAnimation

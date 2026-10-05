@@ -22,10 +22,15 @@
             <Viewbox.RenderTransform>
                 <TranslateTransform x:Name="PetFloat" Y="0" />
             </Viewbox.RenderTransform>
-            <Image x:Name="PetImage" Width="250" Height="250"
-                   Source="Assets/max-pet.png" Stretch="Uniform"
-                   RenderOptions.BitmapScalingMode="HighQuality"
-                   SnapsToDevicePixels="True" />
+            <Grid Width="250" Height="250">
+                <TextBlock x:Name="PetFallback" Text="🐾" FontFamily="Segoe UI Emoji" FontSize="138"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="Collapsed" />
+                <Image x:Name="PetImage" Width="250" Height="250"
+                       Source="pack://application:,,,/Assets/max-pet.png" Stretch="Uniform"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       SnapsToDevicePixels="True" ImageFailed="PetImage_ImageFailed" />
+            </Grid>
         </Viewbox>
 
         <TextBlock x:Name="SleepIndicator" Text="z" FontFamily="Segoe UI"
