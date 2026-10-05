@@ -1,0 +1,44 @@
+name: Build MAX for Windows
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'MAX.Windows/**'
+      - '.github/workflows/windows-build.yml'
+      - 'README.md'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish self-contained Windows app
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish MAX (x64)
+        run: >-
+          dotnet publish MAX.Windows/MAX.Windows.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          --output publish/MAX
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAX-Windows-x64
+          path: publish/MAX/
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,60 @@
+<Window x:Class="MAX.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="MAX"
+        Width="132" Height="163"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ShowActivated="False"
+        Focusable="False">
+    <Window.Resources>
+        <DropShadowEffect x:Key="PetShadow" BlurRadius="10" ShadowDepth="3" Direction="270" Opacity="0.16" Color="#263247" />
+    </Window.Resources>
+
+    <Grid x:Name="Root" Background="Transparent"
+          MouseLeftButtonDown="Root_MouseLeftButtonDown">
+        <Canvas Width="132" Height="163">
+            <Viewbox x:Name="PetFloat" Width="116" Height="130" Canvas.Left="8" Canvas.Top="0"
+                     Stretch="Uniform">
+                <Viewbox.RenderTransform>
+                    <TransformGroup>
+                        <ScaleTransform x:Name="PetSquash" CenterX="58" CenterY="65" />
+                        <RotateTransform x:Name="PetSpin" CenterX="58" CenterY="65" />
+                        <TranslateTransform x:Name="PetBob" Y="0" />
+                    </TransformGroup>
+                </Viewbox.RenderTransform>
+                <Grid Width="154" Height="173">
+                    <Image x:Name="PetImage" Width="154" Height="173"
+                           Source="pack://application:,,,/Assets/max-pet.png" Stretch="Fill"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           SnapsToDevicePixels="True" ImageFailed="PetImage_ImageFailed" />
+                    <Grid x:Name="PetFallback" Width="154" Height="173"
+                          Background="#EEF8FE" Visibility="Collapsed">
+                        <Ellipse Width="94" Height="94" Fill="#F7FCFF" Stroke="#8EA7C0"
+                                 StrokeThickness="3" VerticalAlignment="Center" />
+                        <TextBlock Text="MAX" FontSize="11" FontWeight="Bold" Foreground="#21476A"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+                </Grid>
+            </Viewbox>
+
+            <Border x:Name="MicLight" Canvas.Left="122" Canvas.Top="8" Width="6" Height="6"
+                    CornerRadius="3" Background="#38A169"
+                    ToolTip="Green: MAX is listening for its wake word. Red: microphone is paused or offline." />
+
+            <Border x:Name="SpeechBubble" Canvas.Left="3" Canvas.Top="133" Width="126"
+                    MinHeight="24" MaxHeight="27" Padding="6,4"
+                    Background="#FFFFFF" CornerRadius="10" BorderBrush="#E4E8ED" BorderThickness="1"
+                    Effect="{StaticResource PetShadow}" Visibility="Collapsed">
+                <TextBlock x:Name="StatusText" Text="" Foreground="#363B44"
+                           FontFamily="Segoe UI" FontSize="8.5" FontWeight="SemiBold"
+                           TextAlignment="Center" TextWrapping="Wrap"
+                           VerticalAlignment="Center" HorizontalAlignment="Center" />
+            </Border>
+        </Canvas>
+    </Grid>
+</Window>

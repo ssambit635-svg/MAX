@@ -1,0 +1,10 @@
+<Application x:Class="MAX.Desktop.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <SolidColorBrush x:Key="MaxInk" Color="#282A36" />
+        <SolidColorBrush x:Key="MaxYellow" Color="#FFD943" />
+        <SolidColorBrush x:Key="MaxRed" Color="#F05252" />
+    </Application.Resources>
+</Application>
