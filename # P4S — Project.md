@@ -48,12 +48,12 @@ MAX.Windows/
 ```
 
 ## Character
-MAX is drawn directly in WPF as a small white ball with tiny legs. It gently hovers, wanders around the screen, and sometimes disappears briefly before reappearing elsewhere. Its eyes follow the pointer only while hovered; a tap squishes it and three quick taps make it spin. The character and its interactions are MAX's own WPF implementation; there are no Coucou/Mochi assets or 3D models.
+MAX uses the character picture uploaded to the repository at `MAX.Windows/Assets/max-pet.png`. It gently bobs, wanders around the screen, and sometimes disappears briefly before reappearing elsewhere. A tap squishes the picture and three quick taps make it spin. The character art is the repository upload; no Coucou/Mochi assets or 3D models are used.
 
 ## Roadmap
 1. **Windows pet + command MVP:** visible sleeping character, wake phrase, spoken replies, safe app open/close, browser searches, tray controls, self-contained build.
 2. **Windows voice QA:** test on the target PC, adjust installed-language selection, confidence thresholds, wake-word latency, and noise behavior.
-3. **Character polish:** tune the white-ball pet's wandering, brief disappear/reappear, and unobtrusive idle lines based on real Windows testing.
+3. **Character polish:** tune the uploaded MAX picture's wandering, brief disappear/reappear, and unobtrusive idle lines based on real Windows testing.
 4. **Companion depth:** improve conversational behavior and memory only after the voice-first shell is reliable and privacy boundaries are agreed.
 5. **Original model research (separate project):** investigate whether a small original model can be trained from a deliberately selected dataset. Do not promise a capable general chat model from the target PC's 8 GB RAM / integrated graphics.
 

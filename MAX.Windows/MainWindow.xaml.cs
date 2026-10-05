@@ -69,6 +69,14 @@ public partial class MainWindow : Window
         Closing += MainWindow_Closing;
     }
 
+    private void PetImage_ImageFailed(object sender, System.Windows.ExceptionRoutedEventArgs e)
+    {
+        PetImage.Visibility = Visibility.Collapsed;
+        PetFallback.Visibility = Visibility.Visible;
+        ShowSpeechBubble("MAX's picture didn't load.", 7000);
+        Debug.WriteLine($"MAX reference picture failed to load: {e.ErrorException}");
+    }
+
     private void StartIdleAnimation()
     {
         var bob = new DoubleAnimation
@@ -361,7 +369,7 @@ public partial class MainWindow : Window
             else if (mode == "LISTENING" && !_bubbleTimer.IsEnabled)
                 ShowSpeechBubble("Listening...", 4000);
 
-            PetBody.Opacity = mode == "OFFLINE" ? 0.78 : 1.0;
+            PetImage.Opacity = mode == "OFFLINE" ? 0.78 : 1.0;
         });
     }
 
@@ -396,39 +404,7 @@ public partial class MainWindow : Window
             : System.Windows.Media.Brushes.ForestGreen;
         MicLight.ToolTip = message;
         ShowSpeechBubble(message, 7000);
-        PetBody.Opacity = mode == "OFFLINE" ? 0.78 : 1.0;
-    }
-
-    private void Root_MouseMove(object sender, MouseEventArgs e)
-    {
-        var pointer = e.GetPosition(Root);
-        UpdatePupil(LeftPupilLook, pointer, new Point(46.75, 25.75));
-        UpdatePupil(RightPupilLook, pointer, new Point(65.75, 25.75));
-    }
-
-    private static void UpdatePupil(TranslateTransform pupil, Point pointer, Point eyeCenter)
-    {
-        var dx = pointer.X - eyeCenter.X;
-        var dy = pointer.Y - eyeCenter.Y;
-        var distance = Math.Sqrt(dx * dx + dy * dy);
-        if (distance < 0.01)
-        {
-            pupil.X = 0;
-            pupil.Y = 0;
-            return;
-        }
-
-        var offset = Math.Min(1.7, distance) / distance;
-        pupil.X = dx * offset;
-        pupil.Y = dy * offset;
-    }
-
-    private void Root_MouseLeave(object sender, MouseEventArgs e)
-    {
-        LeftPupilLook.X = 0;
-        LeftPupilLook.Y = 0;
-        RightPupilLook.X = 0;
-        RightPupilLook.Y = 0;
+        PetImage.Opacity = mode == "OFFLINE" ? 0.78 : 1.0;
     }
 
     private void Root_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
