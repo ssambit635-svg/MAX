@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Remove="Assets/max-pet.png" />
-    <Resource Include="Assets/max-pet.png" />
+    <None Remove="Assets/max-whistle.wav" />
+    <Content Include="Assets/max-whistle.wav" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

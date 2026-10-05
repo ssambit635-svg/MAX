@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Microsoft.Win32;
@@ -15,16 +16,34 @@ public partial class MainWindow : Window
 {
     private const string RunRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunValueName = "MAXCompanion";
+    private static readonly string[] IdleRemarks =
+    {
+        "Doo-doo-doo! This is a nice little wander.",
+        "I'm having a tiny stroll.",
+        "I wonder what's over there.",
+        "Just stretching my little legs.",
+        "I'm still here if you need me.",
+        "This spot looks nice for a moment."
+    };
 
     private readonly WindowsVoiceAssistant? _voiceAssistant;
     private readonly Forms.NotifyIcon _trayIcon;
+    private readonly DispatcherTimer _wanderTimer = new();
+    private readonly DispatcherTimer _idleRemarkTimer = new();
+    private readonly DispatcherTimer _reappearTimer = new();
+    private readonly DispatcherTimer _bubbleTimer = new();
+    private readonly Random _random = new();
+    private MediaPlayer? _whistlePlayer;
     private bool _exitRequested;
+    private bool _temporarilyHidden;
+    private bool _isDragging;
 
     public MainWindow()
     {
         InitializeComponent();
-        PositionAtDesktopCorner();
+        MovePetToRandomSpot(animated: false);
         StartIdleAnimation();
+        StartPetTimers();
 
         _trayIcon = CreateTrayIcon();
 
@@ -39,29 +58,13 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            SetVisualState("OFFLINE", "Speech not ready. Check Speech and Microphone settings from the tray, then restart MAX.");
-            ModeBadge.Foreground = System.Windows.Media.Brushes.DarkRed;
-            ModeBadge.ToolTip = ex.Message;
+            SetVisualState("OFFLINE", "Speech isn't ready. Check Windows Speech and Microphone settings.");
+            MicLight.Background = System.Windows.Media.Brushes.IndianRed;
+            MicLight.ToolTip = ex.Message;
             Debug.WriteLine($"MAX voice startup failed: {ex}");
         }
 
         Closing += MainWindow_Closing;
-    }
-
-    private void PositionAtDesktopCorner()
-    {
-        var workArea = SystemParameters.WorkArea;
-        Left = Math.Max(workArea.Left + 12, workArea.Right - Width - 24);
-        Top = Math.Max(workArea.Top + 12, workArea.Bottom - Height - 20);
-    }
-
-    private void PetImage_ImageFailed(object sender, System.Windows.ExceptionRoutedEventArgs e)
-    {
-        PetImage.Visibility = Visibility.Collapsed;
-        PetFallback.Visibility = Visibility.Visible;
-        StatusText.Text = "MAX's picture did not load. Please redownload the latest build.";
-        ModeBadge.ToolTip = e.ErrorException?.Message;
-        Debug.WriteLine($"MAX pet image failed to load: {e.ErrorException}");
     }
 
     private void StartIdleAnimation()
@@ -69,13 +72,207 @@ public partial class MainWindow : Window
         var bob = new DoubleAnimation
         {
             From = 0,
-            To = -5,
-            Duration = TimeSpan.FromSeconds(1.55),
+            To = -3.5,
+            Duration = TimeSpan.FromSeconds(1.4),
             AutoReverse = true,
             RepeatBehavior = RepeatBehavior.Forever,
             EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
         };
-        PetFloat.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, bob);
+        PetBob.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, bob);
+    }
+
+    private void StartPetTimers()
+    {
+        _wanderTimer.Tick += WanderTimer_Tick;
+        _idleRemarkTimer.Tick += IdleRemarkTimer_Tick;
+        _reappearTimer.Tick += ReappearTimer_Tick;
+        _bubbleTimer.Tick += BubbleTimer_Tick;
+        ScheduleNextWander();
+        ScheduleNextIdleRemark();
+    }
+
+    private void ScheduleNextWander()
+    {
+        _wanderTimer.Stop();
+        _wanderTimer.Interval = TimeSpan.FromSeconds(_random.Next(22, 46));
+        _wanderTimer.Start();
+    }
+
+    private void ScheduleNextIdleRemark()
+    {
+        _idleRemarkTimer.Stop();
+        _idleRemarkTimer.Interval = TimeSpan.FromSeconds(_random.Next(120, 301));
+        _idleRemarkTimer.Start();
+    }
+
+    private void WanderTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_temporarilyHidden || _isDragging || _voiceAssistant?.IsInConversation == true)
+        {
+            ScheduleNextWander();
+            return;
+        }
+
+        if (_random.Next(5) == 0)
+            HidePetTemporarily();
+        else
+            MovePetToRandomSpot(animated: true);
+
+        ScheduleNextWander();
+    }
+
+    private void IdleRemarkTimer_Tick(object? sender, EventArgs e)
+    {
+        ScheduleNextIdleRemark();
+        if (_voiceAssistant?.CanSpeakIdle != true)
+            return;
+
+        ShowPet();
+        if (_random.Next(3) == 0)
+        {
+            PlayIdleWhistle();
+            return;
+        }
+
+        var remark = IdleRemarks[_random.Next(IdleRemarks.Length)];
+        _voiceAssistant.SpeakIdle(remark);
+    }
+
+    private void PlayIdleWhistle()
+    {
+        try
+        {
+            if (_whistlePlayer is null)
+            {
+                _whistlePlayer = new MediaPlayer { Volume = 0.25 };
+                _whistlePlayer.MediaFailed += (_, args) =>
+                {
+                    Debug.WriteLine($"MAX's idle whistle could not play: {args.ErrorException?.Message ?? "unknown media error"}");
+                    Dispatcher.InvokeAsync(() => _voiceAssistant?.SpeakIdle("Doo-doo-doo!"));
+                };
+            }
+            _whistlePlayer.Stop();
+            _whistlePlayer.Open(new Uri(
+                System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "max-whistle.wav"),
+                UriKind.Absolute));
+            _whistlePlayer.Play();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"MAX's idle whistle could not play: {ex.Message}");
+            _voiceAssistant?.SpeakIdle("Doo-doo-doo!");
+        }
+    }
+
+    private void MovePetToRandomSpot(bool animated)
+    {
+        var area = SystemParameters.WorkArea;
+        var minLeft = area.Left + 8;
+        var maxLeft = Math.Max(minLeft, area.Right - Width - 8);
+        var minTop = area.Top + 28;
+        var maxTop = Math.Max(minTop, area.Bottom - Height - 12);
+        var targetLeft = minLeft + _random.NextDouble() * (maxLeft - minLeft);
+        var targetTop = minTop + _random.NextDouble() * (maxTop - minTop);
+
+        if (!animated)
+        {
+            StopPositionAnimations();
+            Left = targetLeft;
+            Top = targetTop;
+            return;
+        }
+
+        var duration = TimeSpan.FromSeconds(3.5 + _random.NextDouble() * 3.0);
+        var easing = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
+        BeginAnimation(Window.LeftProperty, new DoubleAnimation
+        {
+            To = targetLeft,
+            Duration = duration,
+            EasingFunction = easing
+        }, HandoffBehavior.SnapshotAndReplace);
+        BeginAnimation(Window.TopProperty, new DoubleAnimation
+        {
+            To = targetTop,
+            Duration = duration,
+            EasingFunction = easing
+        }, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private void StopPositionAnimations()
+    {
+        var currentLeft = Left;
+        var currentTop = Top;
+        BeginAnimation(Window.LeftProperty, null);
+        BeginAnimation(Window.TopProperty, null);
+        Left = currentLeft;
+        Top = currentTop;
+    }
+
+    private void HidePetTemporarily()
+    {
+        if (_temporarilyHidden)
+            return;
+
+        StopPositionAnimations();
+        _temporarilyHidden = true;
+        Root.IsHitTestVisible = false;
+        var fadeOut = new DoubleAnimation
+        {
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(450),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        };
+        fadeOut.Completed += (_, _) =>
+        {
+            if (_temporarilyHidden)
+                Hide();
+        };
+        BeginAnimation(OpacityProperty, fadeOut, HandoffBehavior.SnapshotAndReplace);
+
+        _reappearTimer.Interval = TimeSpan.FromSeconds(_random.Next(4, 11));
+        _reappearTimer.Start();
+    }
+
+    private void ReappearTimer_Tick(object? sender, EventArgs e)
+    {
+        _reappearTimer.Stop();
+        if (!_temporarilyHidden)
+            return;
+
+        _temporarilyHidden = false;
+        MovePetToRandomSpot(animated: false);
+        BeginAnimation(OpacityProperty, null);
+        Opacity = 0;
+        Root.IsHitTestVisible = true;
+        if (!IsVisible)
+            Show();
+        Topmost = true;
+        BeginAnimation(OpacityProperty, new DoubleAnimation
+        {
+            From = 0,
+            To = 1,
+            Duration = TimeSpan.FromMilliseconds(550),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        }, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private void BubbleTimer_Tick(object? sender, EventArgs e)
+    {
+        _bubbleTimer.Stop();
+        SpeechBubble.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowSpeechBubble(string text, int durationMilliseconds = 5000)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        var trimmed = text.Trim();
+        StatusText.Text = trimmed.Length > 44 ? trimmed[..41] + "…" : trimmed;
+        SpeechBubble.Visibility = Visibility.Visible;
+        _bubbleTimer.Stop();
+        _bubbleTimer.Interval = TimeSpan.FromMilliseconds(durationMilliseconds);
+        _bubbleTimer.Start();
     }
 
     private Forms.NotifyIcon CreateTrayIcon()
@@ -137,42 +334,32 @@ public partial class MainWindow : Window
     {
         var pieces = state.Split('|', 2);
         var mode = pieces.Length > 0 ? pieces[0] : "SLEEPING";
-        var text = pieces.Length > 1 ? pieces[1] : "Sleeping · say “Max”";
+        var text = pieces.Length > 1 ? pieces[1] : "Sleeping · say Max";
 
         Dispatcher.InvokeAsync(() =>
         {
-            ModeBadge.Text = mode;
-            ModeBadge.Foreground = mode switch
-            {
-                "LISTENING" => System.Windows.Media.Brushes.DarkGreen,
-                "SPEAKING" => System.Windows.Media.Brushes.DarkBlue,
-                "PAUSED" or "OFFLINE" => System.Windows.Media.Brushes.DarkRed,
-                _ => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(68, 117, 68))
-            };
             MicLight.Background = mode switch
             {
-                "PAUSED" or "OFFLINE" => System.Windows.Media.Brushes.IndianRed,
-                "SPEAKING" => System.Windows.Media.Brushes.DodgerBlue,
                 "LISTENING" => System.Windows.Media.Brushes.OrangeRed,
+                "SPEAKING" => System.Windows.Media.Brushes.DodgerBlue,
+                "PAUSED" or "OFFLINE" => System.Windows.Media.Brushes.IndianRed,
                 _ => System.Windows.Media.Brushes.ForestGreen
             };
             MicLight.ToolTip = mode switch
             {
                 "PAUSED" => "Microphone is paused.",
-                "OFFLINE" => "Speech recognition is not running. Check Windows speech and microphone settings.",
-                "LISTENING" => "MAX is listening to your request.",
-                "SPEAKING" => "MAX is speaking; microphone recognition is paused to avoid hearing itself.",
-                _ => "Microphone is active for the local wake phrase “Max”."
+                "OFFLINE" => "Speech isn't running. Check Windows Speech and Microphone settings.",
+                "LISTENING" => "MAX is listening for your request.",
+                "SPEAKING" => "MAX is speaking.",
+                _ => "MAX is listening for “Max”."
             };
 
-            if (mode is "SLEEPING" or "PAUSED" or "OFFLINE" ||
-                (mode == "LISTENING" && StatusText.Text.StartsWith("Sleeping", StringComparison.Ordinal)))
-            {
-                StatusText.Text = text;
-            }
+            if (mode is "PAUSED" or "OFFLINE")
+                ShowSpeechBubble(text, 7000);
+            else if (mode == "LISTENING" && !_bubbleTimer.IsEnabled)
+                ShowSpeechBubble("Listening...", 4000);
 
-            SleepIndicator.Visibility = mode == "SLEEPING" ? Visibility.Visible : Visibility.Collapsed;
-            PetImage.Opacity = mode == "OFFLINE" ? 0.78 : 1.0;
+            PetBody.Opacity = mode == "OFFLINE" ? 0.78 : 1.0;
         });
     }
 
@@ -180,8 +367,9 @@ public partial class MainWindow : Window
     {
         Dispatcher.InvokeAsync(() =>
         {
-            var clipped = text.Length > 78 ? text[..75] + "…" : text;
-            StatusText.Text = "I heard: " + clipped;
+            ShowPet();
+            var clipped = text.Length > 35 ? text[..32] + "…" : text;
+            ShowSpeechBubble("I heard: " + clipped, 5500);
         });
     }
 
@@ -189,7 +377,8 @@ public partial class MainWindow : Window
     {
         Dispatcher.InvokeAsync(() =>
         {
-            StatusText.Text = text.Length > 115 ? text[..112] + "…" : text;
+            ShowPet();
+            ShowSpeechBubble(text, 6000);
         });
     }
 
@@ -200,12 +389,12 @@ public partial class MainWindow : Window
 
     private void SetVisualState(string mode, string message)
     {
-        ModeBadge.Text = mode;
-        StatusText.Text = message;
-        MicLight.Background = System.Windows.Media.Brushes.IndianRed;
-        MicLight.ToolTip = "Speech recognition is not running. Check Windows speech and microphone settings.";
-        SleepIndicator.Visibility = Visibility.Collapsed;
-        PetImage.Opacity = 0.78;
+        MicLight.Background = mode == "OFFLINE"
+            ? System.Windows.Media.Brushes.IndianRed
+            : System.Windows.Media.Brushes.ForestGreen;
+        MicLight.ToolTip = message;
+        ShowSpeechBubble(message, 7000);
+        PetBody.Opacity = mode == "OFFLINE" ? 0.78 : 1.0;
     }
 
     private void Root_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -213,8 +402,15 @@ public partial class MainWindow : Window
         if (e.LeftButton != MouseButtonState.Pressed)
             return;
 
+        StopPositionAnimations();
+        _isDragging = true;
         try { DragMove(); }
         catch (InvalidOperationException) { }
+        finally
+        {
+            _isDragging = false;
+            ScheduleNextWander();
+        }
     }
 
     private static void OpenWindowsSettings(string page)
@@ -231,11 +427,14 @@ public partial class MainWindow : Window
 
     private void ShowPet()
     {
+        _reappearTimer.Stop();
+        _temporarilyHidden = false;
+        BeginAnimation(OpacityProperty, null);
+        Opacity = 1;
+        Root.IsHitTestVisible = true;
         if (!IsVisible)
             Show();
-        WindowState = WindowState.Normal;
         Topmost = true;
-        Activate();
     }
 
     private bool IsRegisteredForStartup()
@@ -272,7 +471,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        _wanderTimer.Stop();
+        _idleRemarkTimer.Stop();
+        _reappearTimer.Stop();
+        _bubbleTimer.Stop();
         _voiceAssistant?.Dispose();
+        _whistlePlayer?.Stop();
+        _whistlePlayer?.Close();
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
     }

@@ -2,24 +2,30 @@ using System;
 using System.Linq;
 using System.Speech.Recognition;
 using System.Speech.Synthesis;
+using System.Text.RegularExpressions;
 using System.Threading;
 
 namespace MAX.Desktop.Assistant;
 
 /// <summary>
 /// Voice-only front end using Windows' installed desktop speech engine and voice.
-/// MAX listens for the small wake-word grammar while asleep, then enables dictation
-/// for the active conversation. Audio is not saved by this class or sent to a server.
+/// MAX listens for the wake word and a small direct-command grammar while asleep,
+/// then enables direct commands and dictation for the active conversation. Audio is not saved.
 /// </summary>
 public sealed class WindowsVoiceAssistant : IDisposable
 {
     private const string WakeGrammarName = "MAX wake word";
+    private const string WakeCommandGrammarName = "MAX wake and command";
+    private const string CommandGrammarName = "MAX commands";
     private const string DictationGrammarName = "MAX dictation";
     private static readonly TimeSpan ActiveSilenceTimeout = TimeSpan.FromSeconds(40);
+    private static readonly TimeSpan DuplicateRecognitionWindow = TimeSpan.FromSeconds(2);
 
     private readonly SpeechRecognitionEngine _recognizer;
     private readonly SpeechSynthesizer _speaker;
     private readonly Grammar _wakeGrammar;
+    private readonly Grammar _wakeCommandGrammar;
+    private readonly Grammar _commandGrammar;
     private readonly DictationGrammar _dictationGrammar;
     private readonly CommandRouter _commands;
     private readonly Timer _sleepTimer;
@@ -30,6 +36,8 @@ public sealed class WindowsVoiceAssistant : IDisposable
     private volatile bool _sleepAfterSpeech;
     private bool _recognitionRunning;
     private volatile bool _disposed;
+    private string _lastHandledText = string.Empty;
+    private DateTime _lastHandledAtUtc = DateTime.MinValue;
 
     public event Action<string>? StatusChanged;
     public event Action<string>? Heard;
@@ -37,8 +45,21 @@ public sealed class WindowsVoiceAssistant : IDisposable
     public event Action<int>? MicrophoneLevelChanged;
 
     public bool IsPaused => _paused;
+    public bool IsInConversation => _awake || _speaking;
+    public bool CanSpeakIdle => !_disposed && !_paused && !_awake && !_speaking;
 
     public void PublishCurrentStatus() => RaiseState();
+
+    /// <summary>Speak a short ambient line only while MAX is asleep and microphone input is enabled.</summary>
+    public bool SpeakIdle(string text)
+    {
+        if (!CanSpeakIdle || string.IsNullOrWhiteSpace(text))
+            return false;
+
+        _sleepAfterSpeech = false;
+        Say(text);
+        return true;
+    }
 
     public WindowsVoiceAssistant(CommandRouter commands)
     {
@@ -55,6 +76,8 @@ public sealed class WindowsVoiceAssistant : IDisposable
             Name = WakeGrammarName,
             Enabled = true
         };
+        _wakeCommandGrammar = CreateCommandGrammar(recognizerInfo, true, WakeCommandGrammarName);
+        _commandGrammar = CreateCommandGrammar(recognizerInfo, false, CommandGrammarName);
         _dictationGrammar = new DictationGrammar
         {
             Name = DictationGrammarName,
@@ -73,15 +96,18 @@ public sealed class WindowsVoiceAssistant : IDisposable
         _speaker.SpeakCompleted += Speaker_SpeakCompleted;
 
         _recognizer.LoadGrammar(_wakeGrammar);
+        _recognizer.LoadGrammar(_wakeCommandGrammar);
+        _recognizer.LoadGrammar(_commandGrammar);
         _recognizer.LoadGrammar(_dictationGrammar);
         _recognizer.SpeechRecognized += Recognizer_SpeechRecognized;
         _recognizer.AudioLevelUpdated += Recognizer_AudioLevelUpdated;
         _recognizer.RecognizerUpdateReached += Recognizer_RecognizerUpdateReached;
         _recognizer.RecognizeCompleted += Recognizer_RecognizeCompleted;
-        _recognizer.EndSilenceTimeout = TimeSpan.FromMilliseconds(850);
-        _recognizer.EndSilenceTimeoutAmbiguous = TimeSpan.FromMilliseconds(1200);
+        _recognizer.EndSilenceTimeout = TimeSpan.FromMilliseconds(1100);
+        _recognizer.EndSilenceTimeoutAmbiguous = TimeSpan.FromMilliseconds(1500);
 
         _sleepTimer = new Timer(_ => SleepFromTimer(), null, Timeout.Infinite, Timeout.Infinite);
+        ApplyGrammarState();
         StartRecognition();
         RaiseState();
     }
@@ -136,6 +162,30 @@ public sealed class WindowsVoiceAssistant : IDisposable
         RequestGrammarRefresh();
         if (!startFailed)
             RaiseState();
+    }
+
+    private static Grammar CreateCommandGrammar(RecognizerInfo recognizerInfo, bool includeWakeWord, string grammarName)
+    {
+        var builder = new GrammarBuilder
+        {
+            Culture = recognizerInfo.Culture
+        };
+
+        if (includeWakeWord)
+            builder.Append(new Choices("Max", "Hey Max"));
+
+        builder.Append(new Choices("open", "launch", "start", "close", "quit"));
+        builder.Append(new Choices(
+            "browser", "the browser", "web browser", "internet browser", "default browser",
+            "notepad", "calculator", "calc", "paint", "file explorer", "explorer",
+            "chrome", "google chrome", "edge", "microsoft edge", "firefox",
+            "vs code", "visual studio code", "spotify", "google", "youtube"));
+
+        return new Grammar(builder)
+        {
+            Name = grammarName,
+            Enabled = false
+        };
     }
 
     private void StartRecognition()
@@ -212,32 +262,61 @@ public sealed class WindowsVoiceAssistant : IDisposable
         if (_disposed || _paused || _speaking || e.Result is null)
             return;
 
-        if (e.Result.Grammar.Name == WakeGrammarName)
+        var grammarName = e.Result.Grammar.Name;
+        if (grammarName == WakeCommandGrammarName)
         {
-            if (_awake || e.Result.Confidence < 0.20f)
+            if (_awake || e.Result.Confidence < 0.10f)
+                return;
+
+            _awake = true;
+            _sleepTimer.Change(ActiveSilenceTimeout, Timeout.InfiniteTimeSpan);
+            HandleUtterance(e.Result.Text, sleepAfterReply: true);
+            return;
+        }
+
+        if (grammarName == WakeGrammarName)
+        {
+            if (_awake || e.Result.Confidence < 0.10f)
                 return;
 
             _awake = true;
             _sleepTimer.Change(ActiveSilenceTimeout, Timeout.InfiniteTimeSpan);
             RequestGrammarRefresh();
             RaiseState();
-            Say("I'm here. What would you like to do?");
+            Say("Hey!");
             return;
         }
 
-        if (!_awake || e.Result.Grammar.Name != DictationGrammarName || e.Result.Confidence < 0.25f)
+        if (!_awake || (grammarName != CommandGrammarName && grammarName != DictationGrammarName))
             return;
 
-        var transcript = e.Result.Text.Trim();
-        if (transcript.Length == 0)
+        HandleUtterance(e.Result.Text, sleepAfterReply: false);
+    }
+
+    private void HandleUtterance(string transcript, bool sleepAfterReply)
+    {
+        transcript = transcript.Trim();
+        if (transcript.Length == 0 || WasJustHandled(transcript))
             return;
 
         _sleepTimer.Change(ActiveSilenceTimeout, Timeout.InfiniteTimeSpan);
         Heard?.Invoke(transcript);
 
         var reply = _commands.Handle(transcript);
-        _sleepAfterSpeech = reply.SleepAfter;
+        _sleepAfterSpeech = sleepAfterReply || reply.SleepAfter;
         Say(reply.Text);
+    }
+
+    private bool WasJustHandled(string transcript)
+    {
+        var normalized = Regex.Replace(transcript, @"\s+", " ").Trim().ToLowerInvariant();
+        var now = DateTime.UtcNow;
+        if (normalized == _lastHandledText && now - _lastHandledAtUtc < DuplicateRecognitionWindow)
+            return true;
+
+        _lastHandledText = normalized;
+        _lastHandledAtUtc = now;
+        return false;
     }
 
     private void Say(string text)
@@ -316,6 +395,8 @@ public sealed class WindowsVoiceAssistant : IDisposable
 
         var enabled = !_paused && !_speaking;
         _wakeGrammar.Enabled = enabled && !_awake;
+        _wakeCommandGrammar.Enabled = enabled && !_awake;
+        _commandGrammar.Enabled = enabled && _awake;
         _dictationGrammar.Enabled = enabled && _awake;
     }
 

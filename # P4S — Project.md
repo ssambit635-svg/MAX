@@ -5,7 +5,7 @@ MAX is a small, visible character that lives on the Windows desktop. It sleeps u
 
 Agreed first-version scope:
 - Windows-native desktop window, always-on-top over ordinary applications, draggable across monitors, with a tray icon and optional start-with-Windows setting.
-- Voice-only interaction. While asleep, listen for the wake phrase “Max”; after waking, accept speech for a short conversation and return to sleep after 40 seconds of silence.
+- Voice-only interaction. While asleep, listen for “Max” and simple one-phrase wake-plus-command requests (for example, “Max, open Notepad”). After waking, accept speech for a short conversation and return to sleep after 40 seconds of silence.
 - Open/close a small named list of applications; closing requests are graceful and never force-kill an app.
 - Open Google or YouTube search results in the user's default browser. MAX itself does not read or summarize the results.
 - Short scripted small talk. No open-ended LLM in the first version.
@@ -26,7 +26,8 @@ Agreed first-version scope:
 The Windows speech recognizer is for turning speech into text; it is not MAX's conversational AI. It must already be available/enabled in Windows. Recognition accuracy depends on the installed speech language, microphone, noise, and speaker; perfect transcription cannot be promised.
 
 ## Behavior and safety
-- Sleep mode keeps only the wake-word grammar active. Once woken, the dictation grammar is enabled for the active session. Any nearby person who says the wake phrase can wake MAX in v1; voice identity verification is not included.
+- Sleep mode enables the wake phrase and a small direct-command grammar; the active session enables direct app-command phrases plus dictation. Any nearby person who says the wake phrase can wake MAX in v1; voice identity verification is not included.
+- Every randomly chosen 2–5 minutes, MAX says a short deterministic idle line or plays a quiet original whistle. Pausing the microphone also pauses these idle sounds.
 - No audio or transcript is saved by MAX. Speech stays in the Windows speech stack; command handling is local.
 - A search command opens a browser page; it does not grant MAX access to browser contents.
 - App launches use named shortcuts. Closing sends a normal close request; unsaved-work dialogs remain under the user's control.
@@ -46,13 +47,13 @@ MAX.Windows/
 .github/workflows/windows-build.yml
 ```
 
-## Character assets
-The current app bundles an original transparent 2D moth-kitten mascot in `MAX.Windows/Assets/max-pet.png`. The WPF shell gently bobs the image. The shipped app contains no 3D renderer or external character pack.
+## Character
+MAX is drawn directly in WPF as a small white ball with a simple face and tiny legs. It gently hovers, wanders around the screen, and sometimes disappears briefly before reappearing elsewhere. There are no character image assets or 3D models.
 
 ## Roadmap
 1. **Windows pet + command MVP:** visible sleeping character, wake phrase, spoken replies, safe app open/close, browser searches, tray controls, self-contained build.
 2. **Windows voice QA:** test on the target PC, adjust installed-language selection, confidence thresholds, wake-word latency, and noise behavior.
-3. **Character polish:** add lightweight idle/sleep/listening/speaking animation states to the original 2D mascot; keep the desktop overlay small and low-resource.
+3. **Character polish:** tune the white-ball pet's wandering, brief disappear/reappear, and unobtrusive idle lines based on real Windows testing.
 4. **Companion depth:** improve conversational behavior and memory only after the voice-first shell is reliable and privacy boundaries are agreed.
 5. **Original model research (separate project):** investigate whether a small original model can be trained from a deliberately selected dataset. Do not promise a capable general chat model from the target PC's 8 GB RAM / integrated graphics.
 

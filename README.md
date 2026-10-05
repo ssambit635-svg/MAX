@@ -1,35 +1,41 @@
 # MAX — Windows desktop companion
 
-MAX is being built as a small, always-on-top Windows desktop pet. It is a **Windows application**, not a terminal chatbot: the first version opens as a floating character, stays available above ordinary desktop apps, and can be shown/hidden from its notification-area icon.
+MAX is a small, always-on-top Windows desktop pet. It is a **Windows application**, not a terminal chatbot: a tiny white ball with little legs floats around the desktop, and a tray icon can show or exit it.
 
-## What the first prototype does
+## What MAX does
 
-- Sleeps until it hears **“Max”** (the alternate phrase **“Hey Max”** is also accepted to help Windows recognition).
-- After waking, listens for one spoken request at a time, speaks a short reply, then returns to its listening state. It goes back to sleep after 40 seconds of silence or when told to sleep.
-- Uses the speech recognizer and voice already installed in Windows for wake-word detection, dictation, and spoken replies. This is an OS speech engine, not a generative chat model. MAX does not call an AI API, use Ollama, download a model, or save recordings.
+- Sleeps until it hears **“Max”** (or **“Hey Max”**). You can say **“Max, open Notepad”** in one phrase, or say “Max”, wait for the short reply, and then give a command.
+- Uses simple speech grammars for common commands plus Windows dictation for other supported requests. It replies aloud and accepts another request for up to 40 seconds, then sleeps again.
 - Opens a small allowlist of apps, requests a graceful close for supported apps, and opens Google or YouTube results in the default browser.
-- Has a short set of scripted companion replies. The first build has **no open-ended language model**, so it cannot answer arbitrary questions perfectly or summarize web pages.
-- Keeps normal app launching restricted to named shortcuts; it does not run shell commands, read files, or control the screen.
+- Gently bobs, wanders around the screen, occasionally disappears for a few seconds, and at a random interval of 2–5 minutes either says a short scripted line or plays a quiet little whistle. Pausing the microphone also silences these idle sounds.
+- Uses the speech recognizer and voice already installed in Windows. This is an OS dependency, not a generative chat model. MAX does not call an AI API, use Ollama, download a model, save recordings, run arbitrary commands, read files, or inspect the screen.
 
-This first version is intentionally a command companion, not the final conversational AI. Training an original language model is a separate research phase. The supplied PC (11th-gen i5, 8 GB RAM, Intel Iris Xe) can run the desktop pet and voice command layer, but is not suitable for training a capable general chat model from scratch.
+MAX's casual replies and idle remarks are deterministic and limited; it does not retrieve or summarize web pages or answer arbitrary questions like a general chat model.
 
 ## Run on Windows without a terminal
 
-The intended user experience is a self-contained `MAX.exe`. The GitHub Actions workflow in `.github/workflows/windows-build.yml` publishes a self-contained x64 build as a downloadable workflow artifact whenever this project is pushed. Extract the artifact and double-click `MAX.exe`.
+The intended user experience is a self-contained x64 app bundle with `MAX.exe` and its small whistle sound asset. The GitHub Actions workflow in `.github/workflows/windows-build.yml` publishes it as a downloadable workflow artifact whenever this project is pushed. Extract the whole artifact and double-click `MAX.exe`; keep the `Assets` folder beside it.
 
 To build locally, open `MAX.Windows/MAX.Windows.csproj` in Visual Studio 2022 with the .NET 8 desktop workload, then run/publish it. `MAX.Windows/Build-MAX.cmd` is also provided for developers with the .NET 8 SDK installed; the app itself is built as a Windows GUI executable, not a console program.
 
 ## Voice setup
 
-MAX uses an English recognizer already installed in Windows. For reliable recognition, install/enable an English speech language, choose the correct microphone as the Windows default input device, and allow desktop apps to use the microphone. Recognition accuracy and delay depend on the microphone, room noise, Windows speech configuration, and accent; no recognizer can guarantee perfect transcription. If MAX stays asleep, check the mic dot: red means speech is offline or paused; right-click the tray icon to open Microphone or Speech settings. Enable an English Windows speech recognizer, select the correct default microphone, then restart MAX. A green dot means the recognizer started; it brightens when it receives audio.
+MAX uses an English recognizer already installed in Windows. For reliable recognition, enable an English speech language, choose the correct microphone as the Windows default input device, and allow desktop apps to use the microphone. Recognition accuracy and delay depend on the microphone, room noise, Windows speech configuration, and accent; no recognizer can guarantee perfect transcription. The small dot is green while the wake listener is active and red if speech is paused or offline. Right-click MAX's tray icon for microphone or speech settings.
 
-While sleeping, the wake-word grammar is active. After “Max” is heard, the dictation grammar is enabled for up to 40 seconds of conversation. The first prototype accepts the wake word from any nearby speaker; it does **not** identify or authenticate a particular person's voice. Use MAX's notification-area icon to pause the microphone, show the pet, open Windows microphone/speech settings, or exit. The small mic dot is green when wake listening is active, red when paused/offline, and brightens with microphone activity.
+MAX accepts the wake phrase from any nearby speaker; it does **not** identify or authenticate a particular person's voice. The tray menu can pause the microphone, show MAX, open Windows microphone/speech settings, enable start-with-Windows, or exit.
 
-## Supported spoken examples
+## Spoken examples
 
-Say “Max”, wait for the spoken greeting, then say one of:
+Either say one complete phrase:
 
-- “Open Notepad and Calculator”
+- “Max, open Notepad”
+- “Max, open browser”
+
+Or say “Max”, wait for the spoken greeting to finish, then say:
+
+- “Open Notepad”
+- “Open browser”
+- “Open Calculator”
 - “Close Chrome”
 - “Search Google for …”
 - “Search YouTube for …”
@@ -37,21 +43,17 @@ Say “Max”, wait for the spoken greeting, then say one of:
 - “How are you?”
 - “Go to sleep”
 
-Searches open a results page in the default browser; MAX itself does not read or summarize it. Closing an application is a graceful close request only. MAX will not force-terminate an app that might have unsaved work.
+Searches open a results page in the default browser; MAX itself does not read or summarize it. Closing an application is a graceful close request only, so MAX will not force-terminate an app that might have unsaved work.
 
 ## Desktop behavior and limits
 
-The pet is topmost over ordinary Windows applications and can be dragged between monitors. Windows does not permit ordinary apps to draw over secure UAC prompts, the lock screen, or some exclusive full-screen apps. The tray menu includes **Start MAX with Windows**, which is opt-in.
-
-MAX now uses an original transparent 2D moth-kitten mascot, gently bobbing in the native WPF window. No 3D renderer or external character pack is used.
+The pet is topmost over ordinary Windows applications and can be dragged around. Windows does not permit ordinary apps to draw over secure UAC prompts, the lock screen, or some exclusive full-screen apps. The tray menu includes **Start MAX with Windows**, which is opt-in.
 
 ## Repository layout
 
 ```text
 MAX.Windows/              Native WPF Windows app
-  Assistant/              Wake-word listener and deterministic command router
-  MainWindow.xaml          Floating desktop pet
-  Assets/max-pet.png       Original 2D companion mascot
-# P4S — Project.md         Current architecture and roadmap
-p4s context.md             Product context and privacy boundaries
+  Assistant/              Wake listener and deterministic command router
+  MainWindow.xaml          Simple floating white-ball pet
+  Assets/max-whistle.wav  Tiny original idle whistle
 ```

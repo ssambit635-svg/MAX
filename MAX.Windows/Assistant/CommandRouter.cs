@@ -135,8 +135,11 @@ public sealed class CommandRouter
     private static AssistantReply OpenApp(string spokenName)
     {
         var name = NormalizeAppName(spokenName);
-        if (name is "youtube" or "google" or "browser" or "web browser")
+        if (name is "youtube" or "google")
             return OpenUrl(name == "youtube" ? "https://www.youtube.com/" : "https://www.google.com/", name == "youtube" ? "YouTube" : "your browser");
+
+        if (name is "browser" or "the browser" or "web browser" or "internet" or "internet browser" or "default browser")
+            return OpenUrl("https://www.google.com/", "your browser");
 
         if (!Apps.TryGetValue(name, out var app))
             return new AssistantReply($"I don't have an app shortcut for {spokenName} yet. Try Notepad, Calculator, Paint, Chrome, Edge, Firefox, Visual Studio Code, or Spotify.");
