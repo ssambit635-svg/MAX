@@ -16,11 +16,16 @@
     </Window.Resources>
 
     <Grid x:Name="Root" Background="Transparent"
-          MouseLeftButtonDown="Root_MouseLeftButtonDown">
+          MouseLeftButtonDown="Root_MouseLeftButtonDown"
+          MouseMove="Root_MouseMove" MouseLeave="Root_MouseLeave">
         <Canvas Width="112" Height="108">
             <Canvas x:Name="PetFloat" Width="68" Height="78" Canvas.Left="22" Canvas.Top="3">
                 <Canvas.RenderTransform>
-                    <TranslateTransform x:Name="PetBob" Y="0" />
+                    <TransformGroup>
+                        <ScaleTransform x:Name="PetSquash" CenterX="34" CenterY="39" />
+                        <RotateTransform x:Name="PetSpin" CenterX="34" CenterY="39" />
+                        <TranslateTransform x:Name="PetBob" Y="0" />
+                    </TransformGroup>
                 </Canvas.RenderTransform>
 
                 <Line X1="24" Y1="51" X2="21" Y2="64" Stroke="#4B5059" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
@@ -31,8 +36,16 @@
                 <Ellipse x:Name="PetBody" Canvas.Left="6" Canvas.Top="0" Width="56" Height="56"
                          Fill="#FFFEFE" Stroke="#E2E6EB" StrokeThickness="1.2"
                          Effect="{StaticResource PetShadow}" />
-                <Ellipse Canvas.Left="23" Canvas.Top="21" Width="3.5" Height="3.5" Fill="#343A43" />
-                <Ellipse Canvas.Left="42" Canvas.Top="21" Width="3.5" Height="3.5" Fill="#343A43" />
+                <Ellipse Canvas.Left="23" Canvas.Top="21" Width="3.5" Height="3.5" Fill="#343A43">
+                    <Ellipse.RenderTransform>
+                        <TranslateTransform x:Name="LeftPupilLook" />
+                    </Ellipse.RenderTransform>
+                </Ellipse>
+                <Ellipse Canvas.Left="42" Canvas.Top="21" Width="3.5" Height="3.5" Fill="#343A43">
+                    <Ellipse.RenderTransform>
+                        <TranslateTransform x:Name="RightPupilLook" />
+                    </Ellipse.RenderTransform>
+                </Ellipse>
                 <Path Data="M 31,36 Q 34,39 38,36" Stroke="#545B65" StrokeThickness="1.4"
                       StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
             </Canvas>

@@ -29,7 +29,7 @@ The first version is intentionally not a general-purpose generative AI. It has n
 - Speech output uses an installed Windows voice. Speech recognition quality depends on the Windows language pack, microphone, room noise, and voice; accuracy and latency must be tested on the target PC.
 
 ## Character
-MAX is a minimal white ball with tiny legs, drawn directly in WPF with no image or 3D assets. It bobs, wanders around the screen, and occasionally disappears briefly before reappearing elsewhere.
+MAX is a minimal white ball with tiny legs, drawn directly in WPF with no image or 3D character assets. It bobs, wanders around the screen, and occasionally disappears briefly before reappearing elsewhere. Its eyes track the pointer while hovered; a tap squishes it and three quick taps make it spin. MAX's implementation and character remain its own, with no Coucou/Mochi assets.
 
 ## Future model work
 An original MAX language model is a possible later research milestone, not part of the command MVP. Training requires a well-defined, deliberately chosen dataset, training code, and suitable compute. Do not automatically train on all files on the user's PC. The target machine (i5-1155G7, 8 GB RAM, integrated Intel Iris Xe) can run the pet and voice-command layer but is not a realistic machine for training a capable open-domain language model from scratch.

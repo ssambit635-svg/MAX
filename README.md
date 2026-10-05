@@ -7,7 +7,7 @@ MAX is a small, always-on-top Windows desktop pet. It is a **Windows application
 - Sleeps until it hears **“Max”** (or **“Hey Max”**). You can say **“Max, open Notepad”** in one phrase, or say “Max”, wait for the short reply, and then give a command.
 - Uses simple speech grammars for common commands plus Windows dictation for other supported requests. It replies aloud and accepts another request for up to 40 seconds, then sleeps again.
 - Opens a small allowlist of apps, requests a graceful close for supported apps, and opens Google or YouTube results in the default browser.
-- Gently bobs, wanders around the screen, occasionally disappears for a few seconds, and at a random interval of 2–5 minutes either says a short scripted line or plays a quiet little whistle. Pausing the microphone also silences these idle sounds.
+- Gently bobs and wanders around the screen, occasionally disappears for a few seconds, and at a random interval of 2–5 minutes either says a short scripted line or plays a quiet little whistle. When you hover over MAX, its eyes glance toward the pointer; a tap squishes it, and three quick taps make it spin. Pausing the microphone also silences idle sounds.
 - Uses the speech recognizer and voice already installed in Windows. This is an OS dependency, not a generative chat model. MAX does not call an AI API, use Ollama, download a model, save recordings, run arbitrary commands, read files, or inspect the screen.
 
 MAX's casual replies and idle remarks are deterministic and limited; it does not retrieve or summarize web pages or answer arbitrary questions like a general chat model.
@@ -47,7 +47,7 @@ Searches open a results page in the default browser; MAX itself does not read or
 
 ## Desktop behavior and limits
 
-The pet is topmost over ordinary Windows applications and can be dragged around. Windows does not permit ordinary apps to draw over secure UAC prompts, the lock screen, or some exclusive full-screen apps. The tray menu includes **Start MAX with Windows**, which is opt-in.
+The pet is topmost over ordinary Windows applications and can be dragged around. Windows does not permit ordinary apps to draw over secure UAC prompts, the lock screen, or some exclusive full-screen apps. The tray menu includes **Start MAX with Windows**, which is opt-in. MAX's hover gaze and click reactions are implemented in its own WPF code, informed by general interaction ideas from [Coucou](https://github.com/Louis-CFM/coucou). No Coucou source code, name, character, icons, or sounds are bundled.
 
 ## Repository layout
 

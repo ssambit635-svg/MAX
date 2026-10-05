@@ -37,6 +37,8 @@ public partial class MainWindow : Window
     private bool _exitRequested;
     private bool _temporarilyHidden;
     private bool _isDragging;
+    private int _quickTapCount;
+    private DateTime _lastTapAtUtc = DateTime.MinValue;
 
     public MainWindow()
     {
@@ -397,11 +399,44 @@ public partial class MainWindow : Window
         PetBody.Opacity = mode == "OFFLINE" ? 0.78 : 1.0;
     }
 
+    private void Root_MouseMove(object sender, MouseEventArgs e)
+    {
+        var pointer = e.GetPosition(Root);
+        UpdatePupil(LeftPupilLook, pointer, new Point(46.75, 25.75));
+        UpdatePupil(RightPupilLook, pointer, new Point(65.75, 25.75));
+    }
+
+    private static void UpdatePupil(TranslateTransform pupil, Point pointer, Point eyeCenter)
+    {
+        var dx = pointer.X - eyeCenter.X;
+        var dy = pointer.Y - eyeCenter.Y;
+        var distance = Math.Sqrt(dx * dx + dy * dy);
+        if (distance < 0.01)
+        {
+            pupil.X = 0;
+            pupil.Y = 0;
+            return;
+        }
+
+        var offset = Math.Min(1.7, distance) / distance;
+        pupil.X = dx * offset;
+        pupil.Y = dy * offset;
+    }
+
+    private void Root_MouseLeave(object sender, MouseEventArgs e)
+    {
+        LeftPupilLook.X = 0;
+        LeftPupilLook.Y = 0;
+        RightPupilLook.X = 0;
+        RightPupilLook.Y = 0;
+    }
+
     private void Root_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.LeftButton != MouseButtonState.Pressed)
             return;
 
+        var pressPoint = Forms.Cursor.Position;
         StopPositionAnimations();
         _isDragging = true;
         try { DragMove(); }
@@ -410,7 +445,68 @@ public partial class MainWindow : Window
         {
             _isDragging = false;
             ScheduleNextWander();
+
+            var releasePoint = Forms.Cursor.Position;
+            if (Math.Abs(releasePoint.X - pressPoint.X) < 5 && Math.Abs(releasePoint.Y - pressPoint.Y) < 5)
+                PetTapped();
         }
+    }
+
+    private void PetTapped()
+    {
+        var now = DateTime.UtcNow;
+        _quickTapCount = now - _lastTapAtUtc <= TimeSpan.FromMilliseconds(550)
+            ? _quickTapCount + 1
+            : 1;
+        _lastTapAtUtc = now;
+
+        if (_quickTapCount >= 3)
+        {
+            _quickTapCount = 0;
+            SpinPet();
+            ShowSpeechBubble("Wheee!", 1400);
+            return;
+        }
+
+        SquishPet();
+    }
+
+    private void SquishPet()
+    {
+        var easing = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+        PetSquash.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation
+        {
+            From = 1,
+            To = 0.78,
+            Duration = TimeSpan.FromMilliseconds(110),
+            AutoReverse = true,
+            EasingFunction = easing
+        }, HandoffBehavior.SnapshotAndReplace);
+        PetSquash.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation
+        {
+            From = 1,
+            To = 1.12,
+            Duration = TimeSpan.FromMilliseconds(110),
+            AutoReverse = true,
+            EasingFunction = easing
+        }, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private void SpinPet()
+    {
+        PetSpin.BeginAnimation(RotateTransform.AngleProperty, null);
+        PetSpin.Angle = 0;
+        var spin = new DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(700))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+        spin.Completed += (_, _) =>
+        {
+            PetSpin.BeginAnimation(RotateTransform.AngleProperty, null);
+            PetSpin.Angle = 0;
+        };
+        PetSpin.BeginAnimation(RotateTransform.AngleProperty, spin, HandoffBehavior.SnapshotAndReplace);
+        SquishPet();
     }
 
     private static void OpenWindowsSettings(string page)

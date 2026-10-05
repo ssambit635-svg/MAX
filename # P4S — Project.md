@@ -48,7 +48,7 @@ MAX.Windows/
 ```
 
 ## Character
-MAX is drawn directly in WPF as a small white ball with a simple face and tiny legs. It gently hovers, wanders around the screen, and sometimes disappears briefly before reappearing elsewhere. There are no character image assets or 3D models.
+MAX is drawn directly in WPF as a small white ball with tiny legs. It gently hovers, wanders around the screen, and sometimes disappears briefly before reappearing elsewhere. Its eyes follow the pointer only while hovered; a tap squishes it and three quick taps make it spin. The character and its interactions are MAX's own WPF implementation; there are no Coucou/Mochi assets or 3D models.
 
 ## Roadmap
 1. **Windows pet + command MVP:** visible sleeping character, wake phrase, spoken replies, safe app open/close, browser searches, tray controls, self-contained build.
