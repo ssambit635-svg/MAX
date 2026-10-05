@@ -55,7 +55,7 @@ public partial class MainWindow : Window
         Top = Math.Max(workArea.Top + 12, workArea.Bottom - Height - 20);
     }
 
-    private void PetImage_ImageFailed(object sender, System.Windows.Media.ExceptionRoutedEventArgs e)
+    private void PetImage_ImageFailed(object sender, System.Windows.ExceptionRoutedEventArgs e)
     {
         PetImage.Visibility = Visibility.Collapsed;
         PetFallback.Visibility = Visibility.Visible;
