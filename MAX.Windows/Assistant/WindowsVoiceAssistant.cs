@@ -23,11 +23,13 @@ public sealed class WindowsVoiceAssistant : IDisposable
     private readonly DictationGrammar _dictationGrammar;
     private readonly CommandRouter _commands;
     private readonly Timer _sleepTimer;
+    private readonly object _recognitionGate = new();
     private volatile bool _awake;
     private volatile bool _paused;
     private volatile bool _speaking;
     private volatile bool _sleepAfterSpeech;
-    private bool _disposed;
+    private bool _recognitionRunning;
+    private volatile bool _disposed;
 
     public event Action<string>? StatusChanged;
     public event Action<string>? Heard;
@@ -71,18 +73,18 @@ public sealed class WindowsVoiceAssistant : IDisposable
         _recognizer.LoadGrammar(_dictationGrammar);
         _recognizer.SpeechRecognized += Recognizer_SpeechRecognized;
         _recognizer.RecognizerUpdateReached += Recognizer_RecognizerUpdateReached;
+        _recognizer.RecognizeCompleted += Recognizer_RecognizeCompleted;
         _recognizer.EndSilenceTimeout = TimeSpan.FromMilliseconds(850);
         _recognizer.EndSilenceTimeoutAmbiguous = TimeSpan.FromMilliseconds(1200);
-        _recognizer.SetInputToDefaultAudioDevice();
 
         _sleepTimer = new Timer(_ => SleepFromTimer(), null, Timeout.Infinite, Timeout.Infinite);
-        _recognizer.RecognizeAsync(RecognizeMode.Multiple);
+        StartRecognition();
         RaiseState();
     }
 
     public void SetPaused(bool paused)
     {
-        if (_disposed)
+        if (_disposed || _paused == paused)
             return;
 
         _paused = paused;
@@ -93,10 +95,77 @@ public sealed class WindowsVoiceAssistant : IDisposable
             _sleepTimer.Change(Timeout.Infinite, Timeout.Infinite);
             try { _speaker.SpeakAsyncCancelAll(); }
             catch (InvalidOperationException) { }
+
+            bool recognitionRunning;
+            lock (_recognitionGate)
+                recognitionRunning = _recognitionRunning;
+
+            if (recognitionRunning)
+            {
+                try { _recognizer.RecognizeAsyncCancel(); }
+                catch (InvalidOperationException) { }
+            }
+            else
+            {
+                try { _recognizer.SetInputToNull(); }
+                catch (InvalidOperationException) { }
+            }
+        }
+        else
+        {
+            StartRecognition();
         }
 
         RequestGrammarRefresh();
         RaiseState();
+    }
+
+    private void StartRecognition()
+    {
+        lock (_recognitionGate)
+        {
+            if (_disposed || _paused || _recognitionRunning)
+                return;
+
+            try
+            {
+                _recognizer.SetInputToDefaultAudioDevice();
+                _recognizer.RecognizeAsync(RecognizeMode.Multiple);
+                _recognitionRunning = true;
+            }
+            catch (InvalidOperationException)
+            {
+                // A cancel/resume can race with the recognizer's completion event.
+                // RecognizeCompleted will make another start attempt once it is idle.
+            }
+        }
+    }
+
+    private void Recognizer_RecognizeCompleted(object? sender, RecognizeCompletedEventArgs e)
+    {
+        bool shouldRestart;
+        lock (_recognitionGate)
+        {
+            _recognitionRunning = false;
+            if (_disposed)
+                return;
+
+            shouldRestart = !_paused;
+            if (!shouldRestart)
+            {
+                try { _recognizer.SetInputToNull(); }
+                catch (InvalidOperationException) { }
+            }
+        }
+
+        if (e.Error is not null)
+        {
+            StatusChanged?.Invoke("OFFLINE|Windows speech recognition stopped. Resume it from MAX's tray menu or restart MAX.");
+            return;
+        }
+
+        if (shouldRestart)
+            StartRecognition();
     }
 
     private static RecognizerInfo FindWindowsRecognizer()
@@ -254,6 +323,8 @@ public sealed class WindowsVoiceAssistant : IDisposable
         try { _recognizer.SpeechRecognized -= Recognizer_SpeechRecognized; }
         catch (InvalidOperationException) { }
         try { _recognizer.RecognizerUpdateReached -= Recognizer_RecognizerUpdateReached; }
+        catch (InvalidOperationException) { }
+        try { _recognizer.RecognizeCompleted -= Recognizer_RecognizeCompleted; }
         catch (InvalidOperationException) { }
         try { _recognizer.RecognizeAsyncCancel(); }
         catch (InvalidOperationException) { }
