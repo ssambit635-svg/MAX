@@ -132,13 +132,13 @@ public sealed class MaxPetControl : FrameworkElement
         using (var path = geometry.Open())
         {
             path.BeginFigure(new Point(-47, 17), true, true);
-            path.BezierTo(new Point(-53, 5), new Point(-45, -8), new Point(-32, -8), true);
-            path.BezierTo(new Point(-31, -24), new Point(-15, -30), new Point(-4, -19), true);
-            path.BezierTo(new Point(6, -36), new Point(29, -32), new Point(30, -13), true);
-            path.BezierTo(new Point(45, -17), new Point(53, -4), new Point(48, 9), true);
-            path.BezierTo(new Point(57, 20), new Point(40, 29), new Point(26, 25), true);
-            path.BezierTo(new Point(14, 36), new Point(-8, 34), new Point(-17, 26), true);
-            path.BezierTo(new Point(-29, 31), new Point(-47, 27), new Point(-47, 17), true);
+            path.BezierTo(new Point(-53, 5), new Point(-45, -8), new Point(-32, -8), true, true);
+            path.BezierTo(new Point(-31, -24), new Point(-15, -30), new Point(-4, -19), true, true);
+            path.BezierTo(new Point(6, -36), new Point(29, -32), new Point(30, -13), true, true);
+            path.BezierTo(new Point(45, -17), new Point(53, -4), new Point(48, 9), true, true);
+            path.BezierTo(new Point(57, 20), new Point(40, 29), new Point(26, 25), true, true);
+            path.BezierTo(new Point(14, 36), new Point(-8, 34), new Point(-17, 26), true, true);
+            path.BezierTo(new Point(-29, 31), new Point(-47, 27), new Point(-47, 17), true, true);
             path.Close();
         }
 
@@ -241,6 +241,7 @@ public sealed class MaxPetControl : FrameworkElement
                 new Point(center.X - 3, center.Y + 5),
                 new Point(center.X + 3, center.Y + 5),
                 new Point(center.X + 7, center.Y + 1),
+                true,
                 true);
         }
         dc.DrawGeometry(null, pen, geometry);
@@ -256,6 +257,7 @@ public sealed class MaxPetControl : FrameworkElement
                 new Point(x - width * 0.45, y + height),
                 new Point(x + width * 0.45, y + height),
                 new Point(x + width, y),
+                true,
                 true);
         }
         dc.DrawGeometry(null, pen, geometry);
@@ -267,7 +269,7 @@ public sealed class MaxPetControl : FrameworkElement
         using (var path = geometry.Open())
         {
             path.BeginFigure(new Point(center.X - 6, center.Y), false, false);
-            path.LineTo(new Point(center.X + 6, center.Y + slant * 12), true);
+            path.LineTo(new Point(center.X + 6, center.Y + slant * 12), true, true);
         }
         dc.DrawGeometry(null, pen, geometry);
     }
@@ -282,11 +284,13 @@ public sealed class MaxPetControl : FrameworkElement
                 new Point(center.X - 6, center.Y - 6),
                 new Point(center.X + 7, center.Y - 7),
                 new Point(center.X + 6, center.Y + 1),
+                true,
                 true);
             path.BezierTo(
                 new Point(center.X + 5, center.Y + 5),
                 new Point(center.X - 3, center.Y + 5),
                 new Point(center.X - 2, center.Y + 1),
+                true,
                 true);
         }
         dc.DrawGeometry(null, pen, geometry);
@@ -323,9 +327,9 @@ public sealed class MaxPetControl : FrameworkElement
         using (var path = geometry.Open())
         {
             path.BeginFigure(new Point(x, y - 10), false, false);
-            path.LineTo(new Point(x + direction * 7, y - 1), true);
-            path.LineTo(new Point(x + direction * 1, y - 1), true);
-            path.LineTo(new Point(x + direction * 8, y + 10), true);
+            path.LineTo(new Point(x + direction * 7, y - 1), true, true);
+            path.LineTo(new Point(x + direction * 1, y - 1), true, true);
+            path.LineTo(new Point(x + direction * 8, y + 10), true, true);
         }
         dc.DrawGeometry(null, pen, geometry);
     }
