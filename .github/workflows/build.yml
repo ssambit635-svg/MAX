@@ -47,7 +47,7 @@ jobs:
       - name: Build UI
         run: npx vite build
 
-      - name: Icons regenerate from source
+      - name: Regenerate icons from source
         run: npm run icons
 
       - name: Smoke-test the local service
@@ -68,23 +68,81 @@ jobs:
             -H 'content-type: application/json' -d '{"text":"ci smoke test"}'
           curl -sf http://127.0.0.1:7999/api/state > /dev/null
 
-  package:
-    name: Package ${{ matrix.name }}
+  # The Windows installer is the deliverable, so it is built and verified on every push and PR.
+  package-windows:
+    name: Package Windows (installer + portable)
+    needs: verify
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build UI
+        run: npx vite build
+
+      - name: Package with electron-builder
+        shell: bash
+        env:
+          DEBUG: electron-builder
+        run: |
+          set -o pipefail
+          npx electron-builder --win --x64 --publish never 2>&1 | tee ../electron-builder.log
+
+      - name: Package contents
+        shell: bash
+        run: |
+          ls -lh release/
+          test -n "$(ls release/*.exe 2>/dev/null)" || { echo "::error::no installer produced"; exit 1; }
+
+      - name: Show log on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "::group::electron-builder log"
+          tail -n 200 ../electron-builder.log || true
+          echo "::endgroup::"
+
+      - name: Upload packaging log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaging-log-windows
+          path: electron-builder.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload installer
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAX-windows-x64
+          path: |
+            app/release/*.exe
+            app/release/*.yml
+          if-no-files-found: error
+          retention-days: 30
+
+  # macOS and Linux are nice to have: they never block a merge.
+  package-other:
+    name: Package ${{ matrix.name }} (best effort)
     needs: verify
     if: github.event_name != 'pull_request'
-    continue-on-error: ${{ matrix.best_effort }}
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Windows
-            os: windows-latest
-            command: npx electron-builder --win --x64 --publish never
-            artifact: MAX-windows-x64
-            files: |
-              app/release/*.exe
-              app/release/*.yml
-            best_effort: false
           - name: macOS
             os: macos-latest
             command: npx electron-builder --mac --publish never
@@ -92,13 +150,11 @@ jobs:
             files: |
               app/release/*.dmg
               app/release/*.zip
-            best_effort: true
           - name: Linux
             os: ubuntu-latest
             command: npx electron-builder --linux --publish never
             artifact: MAX-linux
             files: app/release/*.AppImage
-            best_effort: true
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -118,7 +174,7 @@ jobs:
       - name: Build UI
         run: npx vite build
 
-      - name: Package
+      - name: Package with electron-builder
         shell: bash
         env:
           DEBUG: electron-builder
@@ -127,7 +183,7 @@ jobs:
           set -o pipefail
           ${{ matrix.command }} 2>&1 | tee ../electron-builder.log
 
-      - name: Show packaging log on failure
+      - name: Show log on failure
         if: failure()
         shell: bash
         run: |
@@ -144,11 +200,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Upload installer
+      - name: Upload build
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.files }}
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
