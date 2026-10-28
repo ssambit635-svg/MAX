@@ -28,6 +28,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(patch),
     }),
+  verify: (provider: string, values: Record<string, string>) =>
+    request<{ ok: boolean; message: string }>("/api/integrations/verify", {
+      method: "POST",
+      body: JSON.stringify({ provider, ...values }),
+    }),
   disconnect: (provider: string) =>
     request<{ ok: boolean; config: PublicConfig; stats: Stats }>("/api/integrations/disconnect", {
       method: "POST",

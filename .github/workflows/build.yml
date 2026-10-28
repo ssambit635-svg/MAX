@@ -50,6 +50,9 @@ jobs:
       - name: Regenerate icons from source
         run: npm run icons
 
+      - name: Integration verification logic
+        run: npm run test:integrations
+
       - name: Smoke-test the local service
         run: |
           node server/index.mjs &

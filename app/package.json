@@ -16,7 +16,8 @@
     "package:win": "npm run build && electron-builder --win --x64 --publish never",
     "package:mac": "npm run build && electron-builder --mac --publish never",
     "package:linux": "npm run build && electron-builder --linux --publish never",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:integrations": "node scripts/verify-integrations.test.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

@@ -114,9 +114,9 @@ Tick these off. For anything that does not match “expected”, keep a note; th
 | # | Do this | Expected |
 |---|---|---|
 | F1 | Open `Stats` | GitHub / LeetCode / Render cards are marked **DEMO**; **VS Code** and **This machine** show real values (your CPU, RAM, recent workspace folders) |
-| F2 | Settings → GitHub → your username → **Connect** | Toast “Saved.”, the GitHub card loses the DEMO badge and shows your real repos / commits |
-| F3 | Settings → LeetCode → your handle → **Connect** | Real solved counts, streak and 28-day heatmap |
-| F4 | Settings → Render → API key → **Connect** | Only if you have a Render key; otherwise skip |
+| F2 | Settings → GitHub → your username → **Connect** | Green “Found @you — N public repos”. Wrong name gives “GitHub has no user called …” instead of saving |
+| F3 | Settings → LeetCode → your handle → **Connect** | Green “Found @you — N problems solved”, real solved counts, streak, 28-day heatmap |
+| F4 | Settings → Render → API key → **Connect** | Only if you have a Render key; otherwise skip. A bad key says “Render rejected that key” |
 | F5 | Type `stats github` | Jumps to Stats and pulses the GitHub card for ~3 s |
 | F6 | Leave MAX open 2 minutes, reopen Stats | Numbers refresh (60 s cache), CPU bar moves |
 

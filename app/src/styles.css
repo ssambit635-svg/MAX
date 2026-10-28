@@ -2276,3 +2276,80 @@ body[data-motion="reduced"] *::after {
     grid-template-columns: 1fr;
   }
 }
+
+/* ------------------------------------------------------------- settings help */
+
+.provider__help {
+  margin-top: 7px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.provider__help b {
+  color: var(--text-2);
+  font-weight: 550;
+}
+
+.provider__help code,
+.hint code {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-2);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.provider__help .linkish {
+  background: none;
+  padding: 0;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.field--actions {
+  align-items: center;
+}
+
+.provider__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.provider__result {
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--red);
+  background: rgba(255, 125, 136, 0.1);
+  border: 1px solid rgba(255, 125, 136, 0.25);
+}
+
+.provider__result[data-ok="true"] {
+  color: #9df3c4;
+  background: rgba(88, 227, 155, 0.1);
+  border-color: rgba(88, 227, 155, 0.26);
+}
+
+/* keep the expanded island inside any window size */
+.island[data-expanded="true"] {
+  width: min(782px, calc(100vw - 24px));
+}
+
+@media (max-width: 640px) {
+  .field {
+    flex-wrap: wrap;
+  }
+
+  .field .input {
+    flex-basis: 100%;
+  }
+}
