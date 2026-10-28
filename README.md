@@ -98,6 +98,9 @@ Every push to `main` builds real installers. Open the Actions tab → the latest
 The same job runs on every pull request, so a Windows installer that would not build can never land
 on `main`.
 
+**New to it on Windows?** [`docs/QUICKSTART-WINDOWS.md`](docs/QUICKSTART-WINDOWS.md) has the exact
+install steps (including the SmartScreen step for an unsigned build) and a 10-minute test plan.
+
 ## Run it
 
 ```bash
