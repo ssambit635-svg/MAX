@@ -4,6 +4,7 @@ import { NowView } from "./components/NowView";
 import { StatsView } from "./components/StatsView";
 import { ActionsView } from "./components/ActionsView";
 import { SettingsView } from "./components/SettingsView";
+import { PillCoach, StarterCard } from "./components/StarterCard";
 import { api } from "./lib/api";
 import { filterSuggestions, type Suggestion } from "./lib/commands";
 import { greeting } from "./lib/format";
@@ -48,6 +49,13 @@ export default function App() {
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [suggestIndex, setSuggestIndex] = useState(0);
+  const [starterHidden, setStarterHidden] = useState(() => {
+    try {
+      return window.localStorage.getItem("max.starter.dismissed") === "1";
+    } catch {
+      return false;
+    }
+  });
   const [, forceTick] = useState(0);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -233,6 +241,15 @@ export default function App() {
     if (highlightTimer.current) window.clearTimeout(highlightTimer.current);
     setHighlight(target);
     highlightTimer.current = window.setTimeout(() => setHighlight(null), 3600);
+  }, []);
+
+  const dismissStarter = useCallback(() => {
+    setStarterHidden(true);
+    try {
+      window.localStorage.setItem("max.starter.dismissed", "1");
+    } catch {
+      /* private mode — the guide just comes back next launch */
+    }
   }, []);
 
   const runCommand = useCallback(
@@ -516,6 +533,18 @@ export default function App() {
               </div>
 
               <div className="panel__body">
+                {tab === "now" && !starterHidden && state.activity.length === 0 && (
+                  <StarterCard
+                    state={state}
+                    busy={busy}
+                    onRun={(command) => void runCommand(command)}
+                    onNote={() => {
+                      setNoteOpen(true);
+                      setTab("now");
+                    }}
+                    onDismiss={dismissStarter}
+                  />
+                )}
                 {tab === "now" && (
                   <NowView
                     state={state}
@@ -625,6 +654,10 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {!expanded && !starterHidden && state.activity.length === 0 && (
+        <PillCoach onDismiss={dismissStarter} />
+      )}
 
       <div className="footer-note">
         <span className="kbd">⌘K</span> open · <span className="kbd">esc</span> close ·{" "}
