@@ -10,13 +10,21 @@ on:
   pull_request:
     paths:
       - 'app/**'
+      - '.github/workflows/build.yml'
 
 permissions:
   contents: read
 
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
 jobs:
   verify:
-    name: Typecheck and build the island
+    name: Verify app
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -26,7 +34,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: app/package-lock.json
 
@@ -39,36 +47,58 @@ jobs:
       - name: Build UI
         run: npx vite build
 
+      - name: Icons regenerate from source
+        run: npm run icons
+
       - name: Smoke-test the local service
         run: |
           node server/index.mjs &
-          for i in $(seq 1 30); do
+          for i in $(seq 1 40); do
             curl -sf http://127.0.0.1:7999/api/health && break
             sleep 0.5
           done
           curl -sf http://127.0.0.1:7999/api/health
+          curl -sf http://127.0.0.1:7999/ -o /dev/null -w 'ui %{http_code}\n'
+          curl -sf http://127.0.0.1:7999/pet.html -o /dev/null -w 'pet %{http_code}\n'
           curl -sf -X POST http://127.0.0.1:7999/api/command \
-            -H 'content-type: application/json' \
-            -d '{"input":"stats github"}'
+            -H 'content-type: application/json' -d '{"input":"stats github"}'
+          curl -sf -X POST http://127.0.0.1:7999/api/command \
+            -H 'content-type: application/json' -d '{"input":"help"}'
           curl -sf -X POST http://127.0.0.1:7999/api/notes \
-            -H 'content-type: application/json' \
-            -d '{"text":"ci smoke test"}'
+            -H 'content-type: application/json' -d '{"text":"ci smoke test"}'
           curl -sf http://127.0.0.1:7999/api/state > /dev/null
 
   package:
-    name: Package desktop app (${{ matrix.os }})
+    name: Package ${{ matrix.name }}
     needs: verify
     if: github.event_name != 'pull_request'
+    continue-on-error: ${{ matrix.best_effort }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            artifacts: dist/*.exe
-          - os: macos-latest
-            artifacts: dist/*.dmg
-          - os: ubuntu-latest
-            artifacts: dist/*.AppImage
+          - name: Windows
+            os: windows-latest
+            command: npx electron-builder --win --x64 --publish never
+            artifact: MAX-windows-x64
+            files: |
+              app/release/*.exe
+              app/release/*.yml
+            best_effort: false
+          - name: macOS
+            os: macos-latest
+            command: npx electron-builder --mac --publish never
+            artifact: MAX-macos
+            files: |
+              app/release/*.dmg
+              app/release/*.zip
+            best_effort: true
+          - name: Linux
+            os: ubuntu-latest
+            command: npx electron-builder --linux --publish never
+            artifact: MAX-linux
+            files: app/release/*.AppImage
+            best_effort: true
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -78,7 +108,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: app/package-lock.json
 
@@ -88,15 +118,37 @@ jobs:
       - name: Build UI
         run: npx vite build
 
-      - name: Package with electron-builder
-        run: npx electron-builder --publish never
+      - name: Package
+        shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEBUG: electron-builder
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          set -o pipefail
+          ${{ matrix.command }} 2>&1 | tee ../electron-builder.log
 
-      - name: Upload installer
+      - name: Show packaging log on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "::group::electron-builder log"
+          tail -n 200 ../electron-builder.log || true
+          echo "::endgroup::"
+
+      - name: Upload packaging log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: MAX-${{ matrix.os }}
-          path: app/${{ matrix.artifacts }}
-          if-no-files-found: warn
+          name: packaging-log-${{ matrix.name }}
+          path: electron-builder.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload installer
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
           retention-days: 30

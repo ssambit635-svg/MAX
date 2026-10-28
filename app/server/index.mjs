@@ -7,8 +7,8 @@ import { collectStats, invalidateStats } from "./integrations.mjs";
 
 const HOST = process.env.MAX_HOST ?? "0.0.0.0";
 const PORT = Number(process.env.MAX_API_PORT ?? process.env.PORT ?? 7999);
-const DIST = path.join(APP_ROOT, "dist");
-const ASSETS = path.join(APP_ROOT, "assets");
+const DIST = process.env.MAX_DIST_DIR ?? path.join(APP_ROOT, "dist");
+const ASSETS = process.env.MAX_ASSETS_DIR ?? path.join(APP_ROOT, "assets");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -224,9 +224,15 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.on("error", (error) => {
+  console.error(`[max] service error: ${error.message}`);
+  process.exit(1);
+});
+
 server.listen(PORT, HOST, () => {
   console.log(`[max] island server on http://${HOST}:${PORT}`);
-  console.log(`[max] state dir: ${loadConfig().saveDir}`);
+  console.log(`[max] ui: ${DIST}`);
+  console.log(`[max] notes: ${loadConfig().saveDir}`);
 });
 
 process.on("SIGTERM", () => server.close(() => process.exit(0)));

@@ -5,6 +5,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
+// The local service is unpacked next to the asar archive (ESM cannot be imported from inside one).
+const SERVER_ROOT = ROOT.includes("app.asar") ? ROOT.replace("app.asar", "app.asar.unpacked") : ROOT;
 const PORT = Number(process.env.MAX_API_PORT ?? 47199);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
@@ -78,7 +80,11 @@ async function startServer() {
   if (serverStarted) return;
   process.env.MAX_HOST = "127.0.0.1";
   process.env.MAX_API_PORT = String(PORT);
-  await import(pathToFileURL(path.join(ROOT, "server", "index.mjs")).href);
+  // Everything the service writes must live outside the read-only asar archive.
+  process.env.MAX_STATE_DIR = path.join(app.getPath("userData"), "state");
+  process.env.MAX_DIST_DIR = path.join(SERVER_ROOT, "dist");
+  process.env.MAX_ASSETS_DIR = path.join(SERVER_ROOT, "assets");
+  await import(pathToFileURL(path.join(SERVER_ROOT, "server", "index.mjs")).href);
   serverStarted = true;
   const ready = await waitForServer();
   if (!ready) console.error("[max] local service did not answer in time");
@@ -208,7 +214,7 @@ function toggleWindow() {
 }
 
 function createTray() {
-  const iconPath = path.join(ROOT, "assets", "icon.png");
+  const iconPath = path.join(SERVER_ROOT, "assets", "icon.png");
   const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 }) : nativeImage.createEmpty();
   tray = new Tray(icon);
   tray.setToolTip("MAX — desktop companion");
