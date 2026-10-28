@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+
+# build output
+app/dist/
+dist/
+release/
+
+# local MAX state (config + saved notes) never gets committed
+.max/
+notes/
+*.log
+
+# OS noise
+.DS_Store
+Thumbs.db
