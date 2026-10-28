@@ -431,10 +431,8 @@ export default function App() {
     );
   }
 
-  const statusText = MOOD_COPY[mood];
-  const pillChip = focusUntil
-    ? `${Math.max(0, Math.round((focusUntil - Date.now()) / 60000))}m focus`
-    : `${state.stats.github.commitsToday} commits · ${state.stats.render.live}/${state.stats.render.total} live`;
+  const focusMinutesLeft = focusUntil ? Math.max(0, Math.round((focusUntil - Date.now()) / 60000)) : 0;
+  const statusText = focusUntil ? `${focusMinutesLeft}m focus left` : MOOD_COPY[mood];
 
   return (
     <div className="stage">
@@ -475,8 +473,7 @@ export default function App() {
               <span className="pill__dot" data-mood={mood} />
               {statusText}
             </span>
-            <span className="pill__chip">{pillChip}</span>
-            {!expanded && <span className="pill__cta">Open</span>}
+            <span className="pill__cta">Open</span>
             <span className="pill__chevron">
               <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
                 <path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
