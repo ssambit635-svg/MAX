@@ -86,6 +86,18 @@ island never looks empty and you never mistake fake numbers for real ones.
 - Notes are plain `.md` files in a folder you choose (default `~/Documents/MAX notes`).
 - The only network calls are the ones you asked for by connecting an integration.
 
+## Install it on Windows
+
+Every push to `main` builds real installers. Open the Actions tab → the latest **Build MAX** run →
+**Artifacts**, and download either:
+
+- **`MAX-windows-x64`** → `MAX-0.2.1-win-x64.exe` (installer, Start-menu shortcut, optional launch at
+  login) or `MAX-0.2.1-portable.exe` (single file, nothing installed)
+- `MAX-macos` / `MAX-linux` when those runners succeed
+
+The same job runs on every pull request, so a Windows installer that would not build can never land
+on `main`.
+
 ## Run it
 
 ```bash

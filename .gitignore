@@ -1,8 +1,9 @@
 # dependencies
 node_modules/
 
-# build output
+# build output (app/build holds generated installers' icons, which ARE committed)
 app/dist/
+app/release/
 dist/
 release/
 
