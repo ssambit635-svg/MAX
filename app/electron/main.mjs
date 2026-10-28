@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, nativeImage, screen, shell } from "electron";
+import { app, BrowserWindow, Menu, Tray, dialog, globalShortcut, ipcMain, nativeImage, screen, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -7,8 +7,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 // The local service is unpacked next to the asar archive (ESM cannot be imported from inside one).
 const SERVER_ROOT = ROOT.includes("app.asar") ? ROOT.replace("app.asar", "app.asar.unpacked") : ROOT;
-const PORT = Number(process.env.MAX_API_PORT ?? 47199);
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+const PREFERRED_PORT = Number(process.env.MAX_API_PORT ?? 47199);
+const PORT_SEARCH_RANGE = 12;
+let BASE_URL = `http://127.0.0.1:${PREFERRED_PORT}`;
 
 const COLLAPSED = { width: 424, height: 104 };
 const EXPANDED = { width: 858, height: 636 };
@@ -19,6 +20,7 @@ let tray = null;
 let quitting = false;
 let currentMode = "collapsed";
 let serverStarted = false;
+let startupFailure = null;
 
 const stateFile = () => path.join(app.getPath("userData"), "window.json");
 
@@ -79,15 +81,68 @@ async function waitForServer(timeoutMs = 12_000) {
 async function startServer() {
   if (serverStarted) return;
   process.env.MAX_HOST = "127.0.0.1";
-  process.env.MAX_API_PORT = String(PORT);
+  process.env.MAX_API_PORT = String(PREFERRED_PORT);
   // Everything the service writes must live outside the read-only asar archive.
   process.env.MAX_STATE_DIR = path.join(app.getPath("userData"), "state");
+  process.env.MAX_VERSION = app.getVersion();
   process.env.MAX_DIST_DIR = path.join(SERVER_ROOT, "dist");
   process.env.MAX_ASSETS_DIR = path.join(SERVER_ROOT, "assets");
-  await import(pathToFileURL(path.join(SERVER_ROOT, "server", "index.mjs")).href);
+  const service = await import(pathToFileURL(path.join(SERVER_ROOT, "server", "index.mjs")).href);
+
+  // Another process may already own the preferred port (a stale MAX, a dev server, another app).
+  let lastError = null;
+  for (let offset = 0; offset < PORT_SEARCH_RANGE; offset++) {
+    const port = PREFERRED_PORT + offset;
+    try {
+      await service.startServer({ port, host: "127.0.0.1" });
+      BASE_URL = `http://127.0.0.1:${port}`;
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+      if (error?.code !== "EADDRINUSE") break;
+    }
+  }
+
   serverStarted = true;
+
+  if (lastError) {
+    console.error(`[max] could not start the local service: ${lastError.message}`);
+    dialog.showErrorBox(
+      "MAX could not start",
+      `The local MAX service could not open a port on this machine.\n\n${lastError.message}`,
+    );
+    app.quit();
+    return;
+  }
+
   const ready = await waitForServer();
-  if (!ready) console.error("[max] local service did not answer in time");
+  if (!ready) {
+    console.error("[max] local service did not answer in time");
+    startupFailure = "The local MAX service did not answer. Windows may have blocked it, or another app is using its port.";
+  }
+}
+
+function loadErrorPage(title, detail) {
+  if (!win) return;
+  const html = `<!doctype html><meta charset="utf-8"><style>
+    :root { color-scheme: dark; }
+    body { margin:0; height:100vh; display:grid; place-items:center; font-family:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+      background: radial-gradient(120% 90% at 50% 0%, #16304a 0%, #0a1622 55%, #050b13 100%); color:#e9f1fa; }
+    .card { width:320px; padding:20px; border-radius:20px; background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.09); box-shadow:0 24px 60px -24px rgba(0,0,0,.8); text-align:center; }
+    h1 { margin:10px 0 6px; font-size:15px; letter-spacing:.12em; }
+    p { margin:0; font-size:12px; line-height:1.55; color:#a9b9cc; }
+    .dot { width:9px; height:9px; border-radius:50%; background:#ff7d88; box-shadow:0 0 12px #ff7d88; display:inline-block; }
+    .hint { margin-top:14px; font-size:11px; color:#6d8098; }
+  </style>
+  <div class="card">
+    <span class="dot"></span>
+    <h1>${title}</h1>
+    <p>${detail}</p>
+    <div class="hint">Close this window and start MAX again.</div>
+  </div>`;
+  win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 }
 
 function createWindow() {
@@ -125,11 +180,15 @@ function createWindow() {
 
   win.setAlwaysOnTop(true, "screen-saver");
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  win.loadURL(`${BASE_URL}/?shell=desktop`);
+  if (startupFailure) {
+    loadErrorPage("MAX could not start", startupFailure);
+  } else {
+    win.loadURL(`${BASE_URL}/?shell=desktop`);
+  }
 
   win.once("ready-to-show", () => {
     win?.showInactive();
-    applyMode("collapsed");
+    if (!startupFailure) applyMode("collapsed");
   });
 
   win.on("closed", () => {
@@ -272,6 +331,7 @@ if (!singleInstance) {
     createWindow();
     createTray();
 
+    if (startupFailure) return;
     try {
       const state = await (await fetch(`${BASE_URL}/api/state`, { signal: AbortSignal.timeout(2500) })).json();
       if (state?.config?.prefs?.petOnDesktop !== false) createPetWindow();
@@ -315,6 +375,11 @@ if (!singleInstance) {
 
   app.on("window-all-closed", () => {
     if (quitting) app.quit();
+  });
+
+  process.on("uncaughtException", (error) => {
+    console.error("[max] uncaught", error);
+    if (app.isReady()) dialog.showErrorBox("MAX hit an unexpected error", String(error?.stack ?? error));
   });
 
   app.on("before-quit", () => {
