@@ -1,14 +1,23 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { APP_ROOT, appendActivity, loadActivity, loadConfig, publicConfig, saveConfig } from "./store.mjs";
 import { appCatalog, handleCommand, recentNotes, saveNote } from "./commands.mjs";
 import { collectStats, invalidateStats } from "./integrations.mjs";
 
-const HOST = process.env.MAX_HOST ?? "0.0.0.0";
-const PORT = Number(process.env.MAX_API_PORT ?? process.env.PORT ?? 7999);
+const DEFAULT_HOST = process.env.MAX_HOST ?? "0.0.0.0";
+const DEFAULT_PORT = Number(process.env.MAX_API_PORT ?? process.env.PORT ?? 7999);
 const DIST = process.env.MAX_DIST_DIR ?? path.join(APP_ROOT, "dist");
 const ASSETS = process.env.MAX_ASSETS_DIR ?? path.join(APP_ROOT, "assets");
+
+const VERSION = process.env.MAX_VERSION || (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(APP_ROOT, "package.json"), "utf8")).version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -82,7 +91,7 @@ async function handleApi(req, res, url) {
   const route = `${req.method} ${url.pathname}`;
 
   if (route === "GET /api/health") {
-    return sendJson(res, 200, { ok: true, name: "MAX", version: "0.2.0", uptimeSeconds: Math.round(process.uptime()) });
+    return sendJson(res, 200, { ok: true, name: "MAX", version: VERSION, uptimeSeconds: Math.round(process.uptime()) });
   }
 
   if (route === "GET /api/events") {
@@ -112,7 +121,7 @@ async function handleApi(req, res, url) {
   if (route === "GET /api/state") {
     const stats = await collectStats();
     return sendJson(res, 200, {
-      version: "0.2.0",
+      version: VERSION,
       config: publicConfig(),
       stats,
       activity: loadActivity(),
@@ -199,7 +208,7 @@ async function handleApi(req, res, url) {
   return sendJson(res, 404, { ok: false, message: `No route for ${route}` });
 }
 
-const server = http.createServer(async (req, res) => {
+async function requestHandler(req, res) {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   try {
     if (url.pathname.startsWith("/api/")) {
@@ -220,20 +229,50 @@ const server = http.createServer(async (req, res) => {
     console.error("[max] request failed", error);
     if (!res.headersSent) sendJson(res, 500, { ok: false, message: error.message ?? "Server error" });
     else res.end();
-    return undefined;
   }
-});
+  return undefined;
+}
 
-server.on("error", (error) => {
-  console.error(`[max] service error: ${error.message}`);
-  process.exit(1);
-});
+/**
+ * Starts the local service. Resolves with the server instance and the port it actually
+ * bound, so the desktop shell can move on to the next port when one is already taken.
+ */
+export function startServer({ port = DEFAULT_PORT, host = DEFAULT_HOST } = {}) {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer(requestHandler);
+    const onError = (error) => {
+      server.removeListener("listening", onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.removeListener("error", onError);
+      server.on("error", (error) => console.error(`[max] service error: ${error.message}`));
+      console.log(`[max] island server on http://${host}:${port}`);
+      console.log(`[max] ui: ${DIST}`);
+      console.log(`[max] notes: ${loadConfig().saveDir}`);
+      resolve({ server, port, close: () => new Promise((done) => server.close(done)) });
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(port, host);
+  });
+}
 
-server.listen(PORT, HOST, () => {
-  console.log(`[max] island server on http://${HOST}:${PORT}`);
-  console.log(`[max] ui: ${DIST}`);
-  console.log(`[max] notes: ${loadConfig().saveDir}`);
-});
-
-process.on("SIGTERM", () => server.close(() => process.exit(0)));
-process.on("SIGINT", () => server.close(() => process.exit(0)));
+// `node server/index.mjs` keeps the original single-process behaviour (dev + CI smoke test).
+function invokedDirectly() {
+  if (!process.argv[1]) return false;
+  const self = path.resolve(fileURLToPath(import.meta.url));
+  const entry = path.resolve(process.argv[1]);
+  return process.platform === "win32" ? self.toLowerCase() === entry.toLowerCase() : self === entry;
+}
+if (invokedDirectly()) {
+  startServer()
+    .then(({ close }) => {
+      process.on("SIGTERM", () => close().then(() => process.exit(0)));
+      process.on("SIGINT", () => close().then(() => process.exit(0)));
+    })
+    .catch((error) => {
+      console.error(`[max] could not start the local service: ${error.message}`);
+      process.exit(1);
+    });
+}
