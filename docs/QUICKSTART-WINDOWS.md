@@ -39,8 +39,8 @@ each launch; settings and notes still persist in the same place.
 ## 3. What should happen in the first 10 seconds
 
 - A small **pill** appears near the top-centre of the screen: `◕ MAX │ ● ready … 6 commits · 3/3 live`
-- A **floating pet** appears near the bottom-right — a white chibi robot with a glowing antenna.
-  Windows will not show it in the taskbar or Alt+Tab; that is deliberate.
+- MAX itself is that one bar plus the pet drawn inside it — there is no second window floating over
+  your work, and nothing appears in Alt+Tab.
 - A **tray icon** appears in the notification area (you may need the `^` overflow arrow).
 - There is **no console window and no installer wizard left open**. MAX is a GUI app.
 
@@ -60,9 +60,9 @@ Tick these off. For anything that does not match “expected”, keep a note; th
 | A2 | Press `Esc` | Panel folds back into the pill |
 | A3 | Click the pill, then the `Stats` / `Actions` / `Settings` tabs | Each view swaps without flicker; the instrument panel stays put |
 | A4 | Focus Notepad, press **Ctrl + Shift + Space** | MAX opens over it with the text cursor already in the command box |
-| A5 | Right-click the tray icon | Menu: Open MAX, Command palette, **Pet on desktop**, Always on top, Launch at login, Open settings folder, Quit MAX |
-| A6 | Toggle **Pet on desktop** off, then on | The floating pet disappears and comes back |
-| A7 | Drag the pill by its body | It moves; position is remembered after restart |
+| A5 | Right-click the tray icon | Menu: Open MAX, Command palette, Always on top, Launch at login, Open settings folder, Quit MAX |
+| A6 | Drag the pill sideways | The window follows the cursor and stays put after restart |
+| A7 | Click the pill (no dragging) | It opens — click and drag are both supported |
 
 ### B. The pet
 
@@ -72,7 +72,7 @@ Tick these off. For anything that does not match “expected”, keep a note; th
 | B2 | Single-click it | Happy hop, squash on press, speech bubble |
 | B3 | Triple-click it fast | Celebration — confetti, bouncing |
 | B4 | Leave it alone for 2 minutes | Eyes close, `z z z`, antenna dims (sleepy) |
-| B5 | Drag the pet window | It stays on top of other apps and remembers its spot |
+| B5 | Drag the island while it is open | MAX moves as one window; position is remembered |
 | B6 | Watch it for 30 s | It blinks, breathes, antenna sways — no stutter, no CPU spike (check Task Manager: should be well under 5 %) |
 
 ### C. Commands — type these in the palette (`Ctrl+Shift+Space`, then Enter)
@@ -151,7 +151,7 @@ cloud model. Tray → **Open settings folder** jumps straight there.
 - **It says “Opened …” even if the app turned out not to be installed** — Windows accepts the launch
   command either way. I will make it verify the process next.
 - macOS and Linux builds exist but are best-effort; Windows is the target.
-- Alt+Tab, the taskbar and the Start menu are intentionally free of the pet window.
+- Alt+Tab, the taskbar and the Start menu are intentionally free of MAX's window.
 
 ## 7. If something is wrong, send me this
 

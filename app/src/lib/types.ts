@@ -86,7 +86,6 @@ export interface Stats {
 export interface PublicConfig {
   saveDir: string;
   prefs: {
-    petOnDesktop: boolean;
     launchAtLogin: boolean;
     reduceMotion: boolean;
     keepIslandOpen: boolean;

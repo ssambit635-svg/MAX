@@ -29,9 +29,9 @@ expand it (click, or ⌘/Ctrl + K)
 └───────────────────────┴────────────────────────────────────────┘
 ```
 
-The pet also lives on your desktop as its own draggable, click-through-ish window: it follows your
-cursor with its eyes, taps back when poked, naps when you are idle, and opens the island on
-double-click.
+The pet lives **inside the island** and nowhere else — no second window floating over your work.
+It follows your cursor with its eyes, taps back when poked, and naps when you are idle. Drag the
+pill (or the panel header) to move MAX anywhere on screen; a plain click opens it.
 
 ## The pet
 
@@ -111,8 +111,9 @@ npm run desktop    # real always-on-top desktop app (Electron)
 npm run dist:win   # Windows installer + portable exe
 ```
 
-`npm run dev` is a browser preview of the same island; `npm run desktop` is the actual desktop pet
-with the transparent window, tray icon, global hotkey (`⌘/Ctrl + Shift + Space`) and launch-at-login.
+`npm run dev` is a browser preview of the same island; `npm run desktop` is the real thing — the
+transparent always-on-top window, tray icon, global hotkey (`⌘/Ctrl + Shift + Space`) and
+launch-at-login.
 
 ## Architecture
 
@@ -127,21 +128,20 @@ app/
 │   ├── App.tsx        pill ⇄ island choreography, keyboard, suggestions, moods
 │   ├── components/    Pet (SVG), Now, Stats, Actions, Settings
 │   └── styles.css     the whole design system
-├── electron/          desktop shell: transparent windows, tray, hotkey, IPC
-├── pet.html           the free-floating desktop pet
-└── docs/              product + command reference
+├── electron/          desktop shell: transparent window, tray, hotkey, drag IPC
+└── docs/              quickstart, product + command reference
 ```
 
 The UI talks to the service over `/api/*` (proxied by Vite in dev, same origin in Electron), and the
-service pushes activity, notes and the current mood to every open surface over
-`text/event-stream`, which is how the desktop pet mirrors the island.
+service pushes activity, notes and settings changes over `text/event-stream` so the island updates
+the moment a command lands.
 
 ## Status
 
-Working today: island + pill, the pet with eight expressions, command palette with fuzzy
-suggestions, note saving, focus timer, GitHub/LeetCode/Render/VS Code/system stats, settings for
-all of the above, tray, global hotkey, desktop pet window, CI that typechecks, smokes the API and
-packages installers for Windows, macOS and Linux.
+Working today: island + pill (click to open, drag to move), the pet with eight expressions, command
+palette with fuzzy suggestions, first-run guide, note saving, focus timer,
+GitHub/LeetCode/Render/VS Code/system stats, settings for all of the above, tray, global hotkey,
+CI that typechecks, smokes the API and packages installers for Windows, macOS and Linux.
 
 Next: drag-onto-window context, a small local index of your notes, and a proper onboarding flow for
 the first integration.

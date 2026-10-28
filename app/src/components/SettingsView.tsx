@@ -25,13 +25,6 @@ export function SettingsView({ config, busy, onConfig, onDisconnect }: SettingsV
         <div className="card" style={{ padding: "4px 14px" }}>
           <div className="setting">
             <div className="setting__text">
-              <div className="setting__name">Pet on the desktop</div>
-              <div className="setting__desc">Keeps the floating island on top of your work.</div>
-            </div>
-            <button className="switch" data-on={config.prefs.petOnDesktop} onClick={() => toggle("petOnDesktop")} aria-label="Toggle desktop pet" />
-          </div>
-          <div className="setting">
-            <div className="setting__text">
               <div className="setting__name">Keep the island open</div>
               <div className="setting__desc">Stops MAX from folding back into the pill after a command.</div>
             </div>

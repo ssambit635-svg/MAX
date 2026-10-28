@@ -28,9 +28,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify(patch),
     }),
-  setMood: (mood: string, caption: string) =>
-    request<{ ok: boolean }>("/api/mood", { method: "POST", body: JSON.stringify({ mood, caption }) }),
-  mood: () => request<{ mood: string; caption: string; at: string }>("/api/mood"),
   disconnect: (provider: string) =>
     request<{ ok: boolean; config: PublicConfig; stats: Stats }>("/api/integrations/disconnect", {
       method: "POST",

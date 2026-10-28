@@ -6,8 +6,9 @@ contextBridge.exposeInMainWorld("maxShell", {
   setMode: (mode) => ipcRenderer.send("max:mode", mode),
   hide: () => ipcRenderer.send("max:hide"),
   quit: () => ipcRenderer.send("max:quit"),
-  openIsland: () => ipcRenderer.send("max:open-island"),
-  setPetWindow: (enabled) => ipcRenderer.send("max:pet-window", enabled),
+  dragBegin: (screenX, screenY) => ipcRenderer.send("max:drag-begin", { screenX, screenY }),
+  dragMove: (screenX, screenY) => ipcRenderer.send("max:drag-move", { screenX, screenY }),
+  dragEnd: () => ipcRenderer.send("max:drag-end"),
   onOpenPalette: (callback) => {
     const handler = () => callback();
     ipcRenderer.on("max:palette", handler);

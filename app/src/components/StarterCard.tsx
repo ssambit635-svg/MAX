@@ -1,5 +1,4 @@
-import type { Mood, StatePayload } from "../lib/types";
-import { Pet } from "./Pet";
+import type { StatePayload } from "../lib/types";
 
 interface StarterProps {
   state: StatePayload;
@@ -67,27 +66,4 @@ export function StarterCard({ state, busy, onRun, onNote, onDismiss }: StarterPr
       </div>
     </div>
   );
-}
-
-interface CoachProps {
-  mood: Mood;
-  onDismiss: () => void;
-}
-
-/** The one-time arrow that explains the pill, shown while MAX has never run a command. */
-export function PillCoach({ onDismiss }: { onDismiss: () => void }) {
-  return (
-    <button className="pill-coach" onClick={onDismiss} aria-label="Got it">
-      <span className="pill-coach__hand">👆</span>
-      <span className="pill-coach__text">
-        Click this bar to open MAX
-        <span className="pill-coach__hint">or press Ctrl + Shift + Space anywhere</span>
-      </span>
-      <span className="pill-coach__ok">Got it</span>
-    </button>
-  );
-}
-
-export function PetGreeting({ mood }: CoachProps) {
-  return <Pet mood={mood} size={40} compact />;
 }

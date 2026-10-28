@@ -15,12 +15,12 @@ const COLLAPSED = { width: 424, height: 104 };
 const EXPANDED = { width: 858, height: 636 };
 
 let win = null;
-let petWin = null;
 let tray = null;
 let quitting = false;
 let currentMode = "collapsed";
 let serverStarted = false;
 let startupFailure = null;
+let dragOrigin = null;
 
 const stateFile = () => path.join(app.getPath("userData"), "window.json");
 
@@ -213,55 +213,6 @@ function createWindow() {
   });
 }
 
-function createPetWindow() {
-  if (petWin) {
-    petWin.show();
-    return;
-  }
-  const saved = readWindowState();
-  const area = workAreaFor();
-  petWin = new BrowserWindow({
-    width: 200,
-    height: 216,
-    x: Math.round(Math.min(Math.max(area.x + 24, saved.petX ?? area.x + area.width - 260), area.x + area.width - 220)),
-    y: Math.round(Math.min(Math.max(area.y + 60, saved.petY ?? area.y + area.height - 300), area.y + area.height - 240)),
-    frame: false,
-    transparent: true,
-    hasShadow: false,
-    resizable: false,
-    skipTaskbar: true,
-    show: false,
-    focusable: false,
-    backgroundColor: "#00000000",
-    alwaysOnTop: true,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.mjs"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      backgroundThrottling: false,
-    },
-  });
-  petWin.setAlwaysOnTop(true, "floating");
-  petWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  petWin.loadURL(`${BASE_URL}/pet.html`);
-  petWin.once("ready-to-show", () => petWin?.showInactive());
-  petWin.on("move", () => {
-    const bounds = petWin?.getBounds();
-    if (bounds) writeWindowState({ petX: bounds.x, petY: bounds.y });
-  });
-  petWin.on("closed", () => {
-    petWin = null;
-  });
-}
-
-function syncPetWindow(enabled) {
-  if (enabled) createPetWindow();
-  else if (petWin) {
-    petWin.destroy();
-    petWin = null;
-  }
-}
-
 function toggleWindow() {
   if (!win) return;
   if (win.isVisible()) {
@@ -282,12 +233,6 @@ function createTray() {
       { label: "Open MAX", click: () => { win?.showInactive(); applyMode("expanded"); win?.webContents.send("max:palette"); } },
       { label: "Command palette", accelerator: "CommandOrControl+Shift+Space", click: () => { win?.showInactive(); applyMode("expanded"); win?.webContents.send("max:palette"); } },
       { type: "separator" },
-      {
-        label: "Pet on desktop",
-        type: "checkbox",
-        checked: true,
-        click: (item) => syncPetWindow(item.checked),
-      },
       {
         label: "Always on top",
         type: "checkbox",
@@ -332,12 +277,6 @@ if (!singleInstance) {
     createTray();
 
     if (startupFailure) return;
-    try {
-      const state = await (await fetch(`${BASE_URL}/api/state`, { signal: AbortSignal.timeout(2500) })).json();
-      if (state?.config?.prefs?.petOnDesktop !== false) createPetWindow();
-    } catch {
-      createPetWindow();
-    }
 
     globalShortcut.register("CommandOrControl+Shift+Space", () => {
       win?.showInactive();
@@ -355,13 +294,25 @@ if (!singleInstance) {
 
     ipcMain.on("max:hide", () => win?.hide());
 
-    ipcMain.on("max:open-island", () => {
-      win?.showInactive();
-      applyMode("expanded");
-      win?.webContents.send("max:palette");
+    // Manual dragging: `-webkit-app-region: drag` would swallow the clicks that open the island.
+    ipcMain.on("max:drag-begin", (_event, point) => {
+      if (!win || typeof point?.screenX !== "number") return;
+      const bounds = win.getBounds();
+      dragOrigin = { screenX: point.screenX, screenY: point.screenY, x: bounds.x, y: bounds.y };
     });
 
-    ipcMain.on("max:pet-window", (_event, enabled) => syncPetWindow(Boolean(enabled)));
+    ipcMain.on("max:drag-move", (_event, point) => {
+      if (!win || !dragOrigin || typeof point?.screenX !== "number") return;
+      const x = Math.round(dragOrigin.x + (point.screenX - dragOrigin.screenX));
+      const y = Math.round(dragOrigin.y + (point.screenY - dragOrigin.screenY));
+      win.setPosition(x, y, false);
+    });
+
+    ipcMain.on("max:drag-end", () => {
+      dragOrigin = null;
+      const bounds = win?.getBounds();
+      if (bounds) writeWindowState({ x: Math.round(bounds.x + bounds.width / 2), y: bounds.y });
+    });
     ipcMain.on("max:quit", () => {
       quitting = true;
       app.quit();
