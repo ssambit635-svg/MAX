@@ -7,7 +7,8 @@ own GitHub, LeetCode, Render and VS Code.
 It is **not** an AI, it has **no voice**, and it never calls a cloud model. Every action comes from a
 hand-written command table, so MAX is instant, inspectable and predictable.
 
-> Design language: a macOS-style dynamic island with real glass, spring physics and a pet drawn
+> Design language: a macOS-style dynamic island — flat, opaque near-black ("zed black") surfaces, slow
+> eased motion and a pet drawn
 > entirely in code, so every expression is honest and sharp at any size.
 
 ---
@@ -112,7 +113,7 @@ npm run dist:win   # Windows installer + portable exe
 ```
 
 `npm run dev` is a browser preview of the same island; `npm run desktop` is the real thing — the
-transparent always-on-top window, tray icon, global hotkey (`⌘/Ctrl + Shift + Space`) and
+transparent always-on-top window (the island itself is opaque), tray icon, global hotkey (`⌘/Ctrl + Shift + Space`) and
 launch-at-login.
 
 ## Architecture

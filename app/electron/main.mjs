@@ -11,8 +11,8 @@ const PREFERRED_PORT = Number(process.env.MAX_API_PORT ?? 47199);
 const PORT_SEARCH_RANGE = 12;
 let BASE_URL = `http://127.0.0.1:${PREFERRED_PORT}`;
 
-const COLLAPSED = { width: 424, height: 104 };
-const EXPANDED = { width: 882, height: 664 };
+const COLLAPSED = { width: 380, height: 88 };
+const EXPANDED = { width: 692, height: 636 };
 
 let win = null;
 let tray = null;
@@ -49,6 +49,23 @@ function workAreaFor(point) {
   }
 }
 
+// Windows ignores `animate` in setBounds, so the opening animation is tweened
+// here frame by frame. Slow and eased on purpose: the island unfolds, it does
+// not snap.
+const TWEEN_MS = 560;
+let tween = null;
+
+function cancelTween() {
+  if (tween) {
+    clearInterval(tween.timer);
+    tween = null;
+  }
+}
+
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
 function applyMode(mode) {
   if (!win) return;
   currentMode = mode;
@@ -61,7 +78,37 @@ function applyMode(mode) {
   const centerX = saved.x ?? bounds.x + bounds.width / 2;
   const x = Math.round(Math.min(Math.max(area.x + 8, centerX - width / 2), area.x + area.width - width - 8));
   const top = Math.round(Math.max(area.y + 6, Math.min(saved.y ?? area.y + 8, area.y + area.height - height - 6)));
-  win.setBounds({ x, y: top, width, height }, true);
+  const target = { x, y: top, width, height };
+
+  cancelTween();
+  const from = { ...bounds };
+  const distance = Math.abs(from.width - target.width);
+  if (distance < 4) {
+    win.setBounds(target, false);
+    return;
+  }
+
+  // Duration scales a little with how far the island has to travel.
+  const duration = Math.min(720, Math.max(420, TWEEN_MS * (distance > 260 ? 1.15 : 1)));
+  const started = Date.now();
+  tween = {
+    timer: setInterval(() => {
+      if (!win || win.isDestroyed()) return cancelTween();
+      const progress = Math.min(1, (Date.now() - started) / duration);
+      const eased = easeInOutCubic(progress);
+      const frame = {
+        x: Math.round(from.x + (target.x - from.x) * eased),
+        y: Math.round(from.y + (target.y - from.y) * eased),
+        width: Math.round(from.width + (target.width - from.width) * eased),
+        height: Math.round(from.height + (target.height - from.height) * eased),
+      };
+      win.setBounds(frame, false);
+      if (progress >= 1) {
+        win.setBounds(target, false);
+        cancelTween();
+      }
+    }, 16),
+  };
 }
 
 async function waitForServer(timeoutMs = 12_000) {
@@ -296,6 +343,7 @@ if (!singleInstance) {
 
     // Manual dragging: `-webkit-app-region: drag` would swallow the clicks that open the island.
     ipcMain.on("max:drag-begin", (_event, point) => {
+      cancelTween();
       if (!win || typeof point?.screenX !== "number") return;
       const bounds = win.getBounds();
       dragOrigin = { screenX: point.screenX, screenY: point.screenY, x: bounds.x, y: bounds.y };

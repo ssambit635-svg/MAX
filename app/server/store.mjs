@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { PERSONAL_PRESET, presetEnabled } from "./personal.mjs";
 
 export const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const STATE_DIR = process.env.MAX_STATE_DIR ?? path.join(APP_ROOT, ".max");
@@ -41,8 +42,28 @@ function deepMerge(base, patch) {
   return out;
 }
 
+/** First run only: seed the owner's public handles so MAX arrives pre-connected. */
+function seedConfig() {
+  const seeded = structuredClone(DEFAULT_CONFIG);
+  if (presetEnabled()) {
+    seeded.github = { ...seeded.github, username: PERSONAL_PRESET.github.username };
+    seeded.leetcode = { ...seeded.leetcode, username: PERSONAL_PRESET.leetcode.username };
+    seeded.preset = { applied: true, owner: PERSONAL_PRESET.owner };
+  }
+  return seeded;
+}
+
 export function loadConfig() {
   ensureDir(STATE_DIR);
+  if (!fs.existsSync(CONFIG_FILE)) {
+    const seeded = seedConfig();
+    try {
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify(seeded, null, 2), { mode: 0o600 });
+    } catch {
+      /* read-only disk: the in-memory defaults still work */
+    }
+    return seeded;
+  }
   try {
     const raw = fs.readFileSync(CONFIG_FILE, "utf8");
     return deepMerge(DEFAULT_CONFIG, JSON.parse(raw));
@@ -66,6 +87,7 @@ export function publicConfig(config = loadConfig()) {
     github: { username: config.github.username, connected: Boolean(config.github.token || config.github.username) },
     leetcode: { username: config.leetcode.username, connected: Boolean(config.leetcode.username) },
     render: { connected: Boolean(config.render.apiKey) },
+    preset: config.preset?.applied ? { applied: true, owner: config.preset.owner } : { applied: false },
   };
 }
 

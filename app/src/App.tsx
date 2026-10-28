@@ -411,7 +411,7 @@ export default function App() {
   if (!state) {
     return (
       <div className="stage">
-        <div className="island" style={{ width: 396 }} data-pulse={!loadError}>
+        <div className="island" data-pulse={!loadError}>
           <div className="pill">
             <span className="pill__pet">
               <Pet mood={loadError ? "error" : "sleepy"} size={30} compact />
@@ -436,15 +436,6 @@ export default function App() {
 
   return (
     <div className="stage">
-      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden>
-        <defs>
-          <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#9df1ff" />
-            <stop offset="100%" stopColor="#5fc9f0" />
-          </linearGradient>
-        </defs>
-      </svg>
-
       <div className="stage__inner">
         <div className="island" data-expanded={expanded} data-pulse={mood === "working" || mood === "celebrate"}>
           <button
@@ -463,7 +454,6 @@ export default function App() {
             }}
             aria-label="Open MAX"
           >
-            <span className="pill__glow" aria-hidden />
             <span className="pill__pet">
               <Pet mood={mood} size={34} compact gaze={gaze} />
             </span>

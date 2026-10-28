@@ -12,6 +12,22 @@ export type Mood =
 
 export type IntegrationId = "github" | "leetcode" | "render" | "vscode" | "system";
 
+export interface ContributionDay {
+  date: string | null;
+  level: number;
+  count: number;
+}
+
+export interface Contributions {
+  total: number;
+  activeDays: number;
+  streak: number;
+  best: { date: string | null; count: number };
+  days: { date: string; level: number; count: number }[];
+  weeks: ContributionDay[][];
+  monthly: { month: string; key: string; count: number }[];
+}
+
 export interface GithubStats {
   demo: boolean;
   note?: string;
@@ -27,6 +43,7 @@ export interface GithubStats {
   streak: number;
   languages: { name: string; pct: number }[];
   sparkline: number[];
+  contributions?: Contributions | null;
   activity: { title: string; repo: string; at: string }[];
 }
 
@@ -94,6 +111,7 @@ export interface PublicConfig {
   github: { username: string; connected: boolean };
   leetcode: { username: string; connected: boolean };
   render: { connected: boolean };
+  preset: { applied: boolean; owner?: string };
 }
 
 export interface ActivityEntry {
