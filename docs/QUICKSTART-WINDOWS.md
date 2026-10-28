@@ -56,7 +56,7 @@ Tick these off. For anything that does not match “expected”, keep a note; th
 
 | # | Do this | Expected |
 |---|---|---|
-| A1 | Click the pill | It springs open into a wide glass panel: pet on the left, **Right now / Live activity / Recent saves** on the right |
+| A1 | Click the pill | It unfolds slowly into a black dashboard: pet + **Right now** on top, **Live activity / Saves** below, and a **Stats** tab with the real green contribution calendar |
 | A2 | Press `Esc` | Panel folds back into the pill |
 | A3 | Click the pill, then the `Stats` / `Actions` / `Settings` tabs | Each view swaps without flicker; the instrument panel stays put |
 | A4 | Focus Notepad, press **Ctrl + Shift + Space** | MAX opens over it with the text cursor already in the command box |

@@ -86,6 +86,104 @@ const DEMO_RENDER = {
   total: 3,
 };
 
+
+/* ------------------------------------------------------- contributions */
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** GitHub's own contribution calendar, parsed from the public profile fragment. */
+export function parseContributionCalendar(html) {
+  // 1) every <td> that describes a day
+  const cells = [];
+  const tagRe = /<td\b[^>]*>/g;
+  let tag;
+  while ((tag = tagRe.exec(html))) {
+    const text = tag[0];
+    const date = /data-date="(\d{4}-\d{2}-\d{2})"/.exec(text);
+    if (!date) continue;
+    const level = /data-level="(\d)"/.exec(text);
+    const id = /id="([^"]+)"/.exec(text);
+    cells.push({
+      date: date[1],
+      level: level ? Number(level[1]) : 0,
+      id: id ? id[1] : null,
+    });
+  }
+  if (!cells.length) return null;
+
+  // 2) the sibling tool-tip holds the exact count in words
+  const counts = new Map();
+  const tipRe = /<tool-tip\b[^>]*for="([^"]+)"[^>]*>([\s\S]*?)<\/tool-tip>/g;
+  let tip;
+  while ((tip = tipRe.exec(html))) {
+    const label = tip[2].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    const counted = /^(\d+)\s+contribution/.exec(label);
+    counts.set(tip[1], counted ? Number(counted[1]) : 0);
+  }
+
+  // GitHub emits the grid row by row, so de-duplicate by date and sort into a real calendar.
+  const byDate = new Map();
+  for (const cell of cells) {
+    const count = cell.id ? counts.get(cell.id) ?? 0 : 0;
+    byDate.set(cell.date, { date: cell.date, level: cell.level, count });
+  }
+  const days = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+
+  const total = days.reduce((sum, day) => sum + day.count, 0);
+  const active = days.filter((day) => day.count > 0).length;
+  const best = days.reduce((top, day) => (day.count > top.count ? day : top), { date: null, count: 0 });
+
+  // current streak: walk backwards from the most recent day
+  let streak = 0;
+  for (let i = days.length - 1; i >= 0; i--) {
+    const day = days[i];
+    const isToday = i === days.length - 1;
+    if (day.count > 0) streak++;
+    else if (isToday) continue; // today can be empty without breaking the streak
+    else break;
+  }
+
+  // pad to whole weeks (Sunday first) so the frontend can render a grid
+  const firstDow = new Date(`${days[0].date}T00:00:00Z`).getUTCDay();
+  const padded = [...Array(firstDow).fill({ date: null, level: 0, count: 0, pad: true }), ...days];
+  while (padded.length % 7 !== 0) padded.push({ date: null, level: 0, count: 0, pad: true });
+
+  const weeks = [];
+  for (let i = 0; i < padded.length; i += 7) weeks.push(padded.slice(i, i + 7));
+
+  const monthly = {};
+  for (const day of days) {
+    const key = day.date.slice(0, 7);
+    monthly[key] = (monthly[key] ?? 0) + day.count;
+  }
+
+  return {
+    total,
+    activeDays: active,
+    best,
+    streak,
+    days: days.map(({ date, level, count }) => ({ date, level, count })),
+    weeks,
+    monthly: Object.entries(monthly)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-12)
+      .map(([month, count]) => ({ month: `${MONTHS[Number(month.slice(5, 7)) - 1]}`, key: month, count })),
+  };
+}
+
+async function fetchContributions(login, headers) {
+  try {
+    const response = await fetch(`https://github.com/users/${encodeURIComponent(login)}/contributions`, {
+      headers: { "user-agent": "Mozilla/5.0 (compatible; MAX-companion)", accept: "text/html", ...headers },
+      signal: AbortSignal.timeout(9000),
+    });
+    if (!response.ok) return null;
+    return parseContributionCalendar(await response.text());
+  } catch {
+    return null;
+  }
+}
+
 /* --------------------------------------------------------------- github */
 
 function monthDay(date) {
@@ -105,10 +203,11 @@ async function githubStats() {
     if (!login) return DEMO_GITHUB;
 
     const profile = user ?? (await fetchJson(`https://api.github.com/users/${encodeURIComponent(login)}`, { headers }));
-    const [repos, pulls, events] = await Promise.all([
+    const [repos, pulls, events, contributions] = await Promise.all([
       fetchJson(`https://api.github.com/users/${encodeURIComponent(login)}/repos?per_page=100&sort=pushed`, { headers }).catch(() => []),
       fetchJson(`https://api.github.com/search/issues?q=${encodeURIComponent(`author:${login} is:pr is:open`)}&per_page=1`, { headers }).catch(() => null),
       fetchJson(`https://api.github.com/users/${encodeURIComponent(login)}/events/public?per_page=60`, { headers }).catch(() => []),
+      fetchContributions(login, headers),
     ]);
 
     const languages = new Map();
@@ -158,15 +257,35 @@ async function githubStats() {
       followers: profile.followers ?? 0,
       stars: (Array.isArray(repos) ? repos : []).reduce((sum, repo) => sum + (repo.stargazers_count ?? 0), 0),
       openPrs: pulls?.total_count ?? 0,
-      commitsToday,
-      commitsWeek,
-      streak: sparkline.filter((value) => value > 0).length,
+      commitsToday: contributions
+        ? contributions.days.find((day) => day.date === dayKey(new Date()))?.count ?? 0
+        : commitsToday,
+      commitsWeek: contributions ? contributions.days.slice(-7).reduce((sum, day) => sum + day.count, 0) : commitsWeek,
+      streak: contributions?.streak ?? sparkline.filter((value) => value > 0).length,
+      contributions,
       languages: languageList.length ? languageList : DEMO_GITHUB.languages,
-      sparkline,
+      sparkline: contributions ? contributions.days.slice(-7).map((day) => day.count) : sparkline,
       activity,
     };
   } catch (error) {
-    return { ...DEMO_GITHUB, note: `GitHub is unreachable: ${error.message}` };
+    return {
+      demo: true,
+      login: username || "github",
+      name: username || "GitHub",
+      avatar: "",
+      repos: 0,
+      followers: 0,
+      stars: 0,
+      openPrs: 0,
+      commitsToday: 0,
+      commitsWeek: 0,
+      streak: 0,
+      languages: [],
+      sparkline: [0, 0, 0, 0, 0, 0, 0],
+      contributions: null,
+      activity: [],
+      note: `Could not reach GitHub (${error.message}). It retries every minute.`,
+    };
   }
 }
 
@@ -182,6 +301,21 @@ const LEETCODE_QUERY = `query userStats($username: String!) {
   allQuestionsCount { difficulty count }
 }`;
 
+function emptyLeetcode(username, note) {
+  return {
+    demo: true,
+    username,
+    note,
+    solved: { all: 0, easy: 0, medium: 0, hard: 0 },
+    totals: { all: 0, easy: 0, medium: 0, hard: 0 },
+    ranking: 0,
+    streak: 0,
+    todaySolved: 0,
+    heatmap: Array(28).fill(0),
+    recent: [],
+  };
+}
+
 async function leetcodeStats() {
   const { username } = loadConfig().leetcode;
   if (!username) return DEMO_LEETCODE;
@@ -192,7 +326,7 @@ async function leetcodeStats() {
       body: JSON.stringify({ query: LEETCODE_QUERY, variables: { username } }),
     });
     const matched = data?.data?.matchedUser;
-    if (!matched) return { ...DEMO_LEETCODE, note: "LeetCode username not found — check Settings." };
+    if (!matched) return emptyLeetcode(username, `LeetCode has no user called “${username}” — check the handle in Settings.`);
 
     const acList = matched.submitStatsGlobal?.acSubmissionNum ?? [];
     const pick = (difficulty) => acList.find((entry) => entry.difficulty === difficulty)?.count ?? 0;
@@ -232,7 +366,7 @@ async function leetcodeStats() {
       recent: DEMO_LEETCODE.recent,
     };
   } catch (error) {
-    return { ...DEMO_LEETCODE, note: `LeetCode is unreachable: ${error.message}` };
+    return emptyLeetcode(username, `Could not reach LeetCode (${error.message}). It retries every minute.`);
   }
 }
 
