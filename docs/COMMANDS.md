@@ -9,18 +9,28 @@ except the integration you connected in Settings.
 
 | Say | Launches |
 |---|---|
-| notepad / notes | Notepad (Windows) · TextEdit (macOS) · gedit (Linux) |
+| notepad / notes | Notepad |
 | calculator / calc | Calculator |
-| chrome / browser | Google Chrome |
-| edge | Microsoft Edge |
-| firefox | Firefox |
+| chrome / google chrome | Google Chrome |
+| edge / microsoft edge | Microsoft Edge |
+| browser | whichever of Chrome / Edge is installed, else your default browser |
+| word / ms word / microsoft word | Microsoft Word |
+| wps / wps office / wps writer | WPS Office |
+| whatsapp / whats app | WhatsApp (desktop or Store app) |
+| copilot / co pilot | Copilot (Store app) |
+| camera / webcam | Camera |
 | vs code / vscode / editor | Visual Studio Code |
-| explorer / files / finder | File Explorer / Finder |
-| terminal / powershell | Windows Terminal / Terminal |
-| paint | Paint / Preview |
+| explorer / files / folder | File Explorer |
+| terminal / powershell / cmd | Windows Terminal (falls back to cmd) |
+| paint | Paint |
 | spotify / music | Spotify |
-| task manager | Task Manager / Activity Monitor |
-| settings | Windows Settings / System Settings |
+| task manager | Task Manager |
+| settings | Windows Settings |
+
+MAX does not guess: every launch checks the real install first — the usual Program Files paths,
+`App Paths` in the registry, then Start-menu apps for Store programs (WhatsApp, Copilot, Camera,
+WPS). If nothing is found it says so and lists the paths it checked, instead of pretending.
+Apps missing from this machine are hidden in **Actions**, and "scan again" re-checks after an install.
 
 `close <app>` · `quit <app>` asks the app to close politely. Unsaved-work dialogs stay yours to answer.
 MAX refuses to close the file manager, because it hosts parts of the desktop.

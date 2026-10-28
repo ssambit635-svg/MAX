@@ -1,7 +1,7 @@
 {
   "name": "max-companion",
   "productName": "MAX",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "MAX \u2014 a calm, always-on desktop companion island with a tiny animated pet that runs your small tasks.",
   "license": "MIT",
@@ -17,7 +17,9 @@
     "package:mac": "npm run build && electron-builder --mac --publish never",
     "package:linux": "npm run build && electron-builder --linux --publish never",
     "typecheck": "tsc --noEmit",
-    "test:integrations": "node scripts/verify-integrations.test.mjs"
+    "test:integrations": "node scripts/verify-integrations.test.mjs",
+    "test:apps": "node scripts/verify-apps.test.mjs",
+    "test": "npm run test:integrations && npm run test:apps"
   },
   "dependencies": {
     "react": "^18.3.1",

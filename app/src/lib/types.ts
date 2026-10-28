@@ -133,6 +133,8 @@ export interface AppEntry {
   id: string;
   label: string;
   terms: string[];
+  available?: boolean | null;
+  how?: string | null;
 }
 
 export interface StatePayload {

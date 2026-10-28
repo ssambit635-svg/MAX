@@ -53,6 +53,9 @@ jobs:
       - name: Integration verification logic
         run: npm run test:integrations
 
+      - name: App allowlist and resolver logic
+        run: npm run test:apps
+
       - name: Smoke-test the local service
         run: |
           node server/index.mjs &
