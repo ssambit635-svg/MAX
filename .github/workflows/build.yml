@@ -137,7 +137,6 @@ jobs:
   package-other:
     name: Package ${{ matrix.name }} (best effort)
     needs: verify
-    if: github.event_name != 'pull_request'
     continue-on-error: true
     strategy:
       fail-fast: false
