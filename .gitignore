@@ -14,3 +14,6 @@ notes/
 # OS noise
 .DS_Store
 Thumbs.db
+
+# local build scratch
+app/.build/
