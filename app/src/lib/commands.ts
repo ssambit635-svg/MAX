@@ -6,6 +6,12 @@ export interface Suggestion {
 
 export const BASE_SUGGESTIONS: Suggestion[] = [
   { cmd: "open chrome", desc: "Browser", group: "Apps" },
+  { cmd: "open edge", desc: "Browser", group: "Apps" },
+  { cmd: "open word", desc: "Document", group: "Apps" },
+  { cmd: "open wps office", desc: "Document", group: "Apps" },
+  { cmd: "open whatsapp", desc: "Chat", group: "Apps" },
+  { cmd: "open copilot", desc: "Assistant app", group: "Apps" },
+  { cmd: "open camera", desc: "Camera", group: "Apps" },
   { cmd: "open vs code", desc: "Editor", group: "Apps" },
   { cmd: "open notepad", desc: "Scratchpad", group: "Apps" },
   { cmd: "open terminal", desc: "Shell", group: "Apps" },

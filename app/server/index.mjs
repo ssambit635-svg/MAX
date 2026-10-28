@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { APP_ROOT, appendActivity, loadActivity, loadConfig, publicConfig, saveConfig } from "./store.mjs";
 import { appCatalog, handleCommand, recentNotes, saveNote } from "./commands.mjs";
+import { probeApps } from "./apps.mjs";
 import { collectStats, invalidateStats, verifyIntegration } from "./integrations.mjs";
 
 const DEFAULT_HOST = process.env.MAX_HOST ?? "0.0.0.0";
@@ -128,6 +129,11 @@ async function handleApi(req, res, url) {
       apps: appCatalog(),
       platform: process.platform,
     });
+  }
+
+  if (route === "GET /api/apps") {
+    // Resolve every allowlisted app against this machine so the UI only offers what exists.
+    return sendJson(res, 200, { apps: await probeApps() });
   }
 
   if (route === "GET /api/stats") {

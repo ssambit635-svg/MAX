@@ -3432,3 +3432,22 @@ body[data-shell="desktop"] .footer-note {
   font-size: 10px;
   color: #4d5158;
 }
+
+/* ---------------------------------------------------- actions: machine scan */
+
+.section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.section__head .text-link {
+  margin-top: 0;
+  font-size: 9.5px;
+}
+
+.section__head .text-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

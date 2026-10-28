@@ -1,4 +1,4 @@
-import type { CommandResult, NoteEntry, PublicConfig, StatePayload, Stats } from "./types";
+import type { AppEntry, CommandResult, NoteEntry, PublicConfig, StatePayload, Stats } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -23,6 +23,7 @@ export const api = {
       body: JSON.stringify({ text, name }),
     }),
   notes: () => request<{ notes: NoteEntry[] }>("/api/notes"),
+  apps: () => request<{ apps: AppEntry[] }>("/api/apps"),
   config: (patch: Record<string, unknown>) =>
     request<{ ok: boolean; config: PublicConfig; stats: Stats }>("/api/config", {
       method: "POST",
