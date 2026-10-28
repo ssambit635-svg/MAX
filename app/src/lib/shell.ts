@@ -4,8 +4,9 @@ export interface MaxShellBridge {
   setMode: (mode: "collapsed" | "expanded") => void;
   hide: () => void;
   quit: () => void;
-  openIsland: () => void;
-  setPetWindow: (enabled: boolean) => void;
+  dragBegin: (screenX: number, screenY: number) => void;
+  dragMove: (screenX: number, screenY: number) => void;
+  dragEnd: () => void;
   onOpenPalette: (callback: () => void) => () => void;
   onCollapse: (callback: () => void) => () => void;
 }

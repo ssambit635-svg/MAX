@@ -34,7 +34,6 @@ const MIME = {
 };
 
 const clients = new Set();
-const live = { mood: "idle", caption: "", at: new Date().toISOString() };
 
 function sendJson(res, status, payload) {
   const body = JSON.stringify(payload);
@@ -131,19 +130,6 @@ async function handleApi(req, res, url) {
     });
   }
 
-  if (route === "GET /api/mood") {
-    return sendJson(res, 200, live);
-  }
-
-  if (route === "POST /api/mood") {
-    const body = await readBody(req);
-    live.mood = String(body?.mood ?? "idle");
-    live.caption = String(body?.caption ?? "").slice(0, 240);
-    live.at = new Date().toISOString();
-    broadcast("mood", live);
-    return sendJson(res, 200, { ok: true, mood: live });
-  }
-
   if (route === "GET /api/stats") {
     if (url.searchParams.get("force") === "1") invalidateStats();
     return sendJson(res, 200, await collectStats());
@@ -152,10 +138,6 @@ async function handleApi(req, res, url) {
   if (route === "POST /api/command" && req.method === "POST") {
     const body = await readBody(req);
     const result = await handleCommand(body?.input);
-    live.caption = result.message;
-    live.mood = result.mood ?? "idle";
-    live.at = new Date().toISOString();
-    broadcast("mood", live);
     const entry = appendActivity({
       kind: result.mood === "error" ? "error" : "command",
       title: String(body?.input ?? "").slice(0, 120),

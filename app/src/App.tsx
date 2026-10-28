@@ -4,10 +4,12 @@ import { NowView } from "./components/NowView";
 import { StatsView } from "./components/StatsView";
 import { ActionsView } from "./components/ActionsView";
 import { SettingsView } from "./components/SettingsView";
+import { StarterCard } from "./components/StarterCard";
 import { api } from "./lib/api";
 import { filterSuggestions, type Suggestion } from "./lib/commands";
 import { greeting } from "./lib/format";
 import { inDesktopShell, shellBridge } from "./lib/shell";
+import { useWindowDrag } from "./lib/useWindowDrag";
 import type { CommandResult, IntegrationId, Mood, StatePayload, Tab } from "./lib/types";
 
 const TABS: { id: Tab; label: string }[] = [
@@ -48,8 +50,16 @@ export default function App() {
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [suggestIndex, setSuggestIndex] = useState(0);
+  const [starterHidden, setStarterHidden] = useState(() => {
+    try {
+      return window.localStorage.getItem("max.starter.dismissed") === "1";
+    } catch {
+      return false;
+    }
+  });
   const [, forceTick] = useState(0);
 
+  const drag = useWindowDrag();
   const inputRef = useRef<HTMLInputElement>(null);
   const moodTimer = useRef<number | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -100,18 +110,6 @@ export default function App() {
   useEffect(() => {
     document.body.dataset.motion = state?.config.prefs.reduceMotion ? "reduced" : "animated";
   }, [state?.config.prefs.reduceMotion]);
-
-  // The floating desktop pet mirrors the island's mood through the local service.
-  useEffect(() => {
-    const id = window.setTimeout(() => {
-      void api.setMood(mood, caption).catch(() => undefined);
-    }, 260);
-    return () => window.clearTimeout(id);
-  }, [mood, caption]);
-
-  useEffect(() => {
-    shellBridge()?.setPetWindow(state?.config.prefs.petOnDesktop ?? true);
-  }, [state?.config.prefs.petOnDesktop]);
 
   useEffect(() => {
     if (!state) return;
@@ -233,6 +231,15 @@ export default function App() {
     if (highlightTimer.current) window.clearTimeout(highlightTimer.current);
     setHighlight(target);
     highlightTimer.current = window.setTimeout(() => setHighlight(null), 3600);
+  }, []);
+
+  const dismissStarter = useCallback(() => {
+    setStarterHidden(true);
+    try {
+      window.localStorage.setItem("max.starter.dismissed", "1");
+    } catch {
+      /* private mode — the guide just comes back next launch */
+    }
   }, []);
 
   const runCommand = useCallback(
@@ -424,10 +431,8 @@ export default function App() {
     );
   }
 
-  const statusText = MOOD_COPY[mood];
-  const pillChip = focusUntil
-    ? `${Math.max(0, Math.round((focusUntil - Date.now()) / 60000))}m focus`
-    : `${state.stats.github.commitsToday} commits · ${state.stats.render.live}/${state.stats.render.total} live`;
+  const focusMinutesLeft = focusUntil ? Math.max(0, Math.round((focusUntil - Date.now()) / 60000)) : 0;
+  const statusText = focusUntil ? `${focusMinutesLeft}m focus left` : MOOD_COPY[mood];
 
   return (
     <div className="stage">
@@ -444,7 +449,13 @@ export default function App() {
         <div className="island" data-expanded={expanded} data-pulse={mood === "working" || mood === "celebrate"}>
           <button
             className="pill"
+            type="button"
+            onPointerDown={drag.onPointerDown}
+            onPointerMove={drag.onPointerMove}
+            onPointerUp={drag.onPointerUp}
+            onPointerCancel={drag.onPointerCancel}
             onClick={() => {
+              if (drag.consumedDrag()) return;
               setExpanded(true);
               lastActionAt.current = Date.now();
               if (mood === "sleepy") setMood("idle");
@@ -452,16 +463,17 @@ export default function App() {
             }}
             aria-label="Open MAX"
           >
+            <span className="pill__glow" aria-hidden />
             <span className="pill__pet">
-              <Pet mood={mood} size={32} compact gaze={gaze} />
+              <Pet mood={mood} size={34} compact gaze={gaze} />
             </span>
             <span className="pill__name">MAX</span>
             <span className="pill__divider" />
             <span className="pill__status">
-              <span className="pill__dot" />
+              <span className="pill__dot" data-mood={mood} />
               {statusText}
             </span>
-            <span className="pill__chip">{pillChip}</span>
+            <span className="pill__cta">Open</span>
             <span className="pill__chevron">
               <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
                 <path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -516,6 +528,18 @@ export default function App() {
               </div>
 
               <div className="panel__body">
+                {tab === "now" && !starterHidden && state.activity.length === 0 && (
+                  <StarterCard
+                    state={state}
+                    busy={busy}
+                    onRun={(command) => void runCommand(command)}
+                    onNote={() => {
+                      setNoteOpen(true);
+                      setTab("now");
+                    }}
+                    onDismiss={dismissStarter}
+                  />
+                )}
                 {tab === "now" && (
                   <NowView
                     state={state}

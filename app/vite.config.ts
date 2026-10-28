@@ -22,11 +22,6 @@ export default defineConfig({
     outDir: "dist",
     target: "chrome120",
     sourcemap: false,
-    rollupOptions: {
-      input: {
-        main: "index.html",
-        pet: "pet.html",
-      },
-    },
+
   },
 });

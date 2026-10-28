@@ -15,7 +15,6 @@ const DEFAULT_CONFIG = {
   leetcode: { username: "" },
   render: { apiKey: "" },
   prefs: {
-    petOnDesktop: true,
     launchAtLogin: false,
     reduceMotion: false,
     keepIslandOpen: false,

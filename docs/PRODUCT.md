@@ -8,7 +8,8 @@ genuinely fast multitasking engine.
 Three ideas, in priority order:
 
 1. **The pet is the product.** A cute, smooth, code-drawn character with real-time expressions that
-   reflect what the machine is actually doing. It is always there, never in the way.
+   reflect what the machine is actually doing. It lives **inside the island** — one window, no
+   second sprite floating over your work.
 2. **The island is the surface.** A macOS-style dynamic island: a pill when idle, a full glass panel
    when working. Spring physics, blur, hairline borders, one accent color.
 3. **The engine is the reason it stays installed.** Small tasks in one keystroke: open an app, save a
@@ -46,8 +47,7 @@ Rules we hold ourselves to:
 
 The island owns the mood. It is derived from: last user action (idle → sleepy), an in-flight command
 (thinking), a running focus block (working), the result (happy / celebrate / error), and typing
-(listening). Mood is mirrored to `POST /api/mood` and fanned out over SSE so the floating desktop pet
-shows the same face at the same moment — one brain, two surfaces.
+(listening). Mood never leaves the island: one window, one face, nothing floating over the user's work.
 
 ## Command grammar
 
@@ -59,7 +59,7 @@ brain free of presentation and the UI free of business rules.
 
 ## Roadmap
 
-1. **Now (0.2):** island, pet, commands, notes, focus, stats, settings, desktop pet, packaging.
+1. **Now (0.2):** island, pet, commands, notes, focus, stats, settings, packaging.
 2. **Next:** onboarding for the first integration, drag-a-file-to-save, note search, per-app focus
    profiles, a compact tray mini-menu.
 3. **Later:** optional plugin folder so a user can add their own allowlisted actions as JSON, and
