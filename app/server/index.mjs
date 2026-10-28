@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { APP_ROOT, appendActivity, loadActivity, loadConfig, publicConfig, saveConfig } from "./store.mjs";
 import { appCatalog, handleCommand, recentNotes, saveNote } from "./commands.mjs";
-import { collectStats, invalidateStats } from "./integrations.mjs";
+import { collectStats, invalidateStats, verifyIntegration } from "./integrations.mjs";
 
 const DEFAULT_HOST = process.env.MAX_HOST ?? "0.0.0.0";
 const DEFAULT_PORT = Number(process.env.MAX_API_PORT ?? process.env.PORT ?? 7999);
@@ -170,6 +170,19 @@ async function handleApi(req, res, url) {
     const config = publicConfig();
     broadcast("config", { config, stats });
     return sendJson(res, 200, { ok: true, config, stats });
+  }
+
+  if (route === "POST /api/integrations/verify") {
+    const body = await readBody(req);
+    const provider = String(body?.provider ?? "");
+    const patch = {
+      github: { username: body?.username ?? "", token: body?.token ?? "" },
+      leetcode: { username: body?.username ?? "" },
+      render: { apiKey: body?.apiKey ?? "" },
+    }[provider];
+    if (!patch) return sendJson(res, 400, { ok: false, message: "Unknown provider." });
+    const result = await verifyIntegration(provider, patch);
+    return sendJson(res, 200, result);
   }
 
   if (route === "POST /api/integrations/disconnect") {

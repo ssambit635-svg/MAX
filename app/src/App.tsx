@@ -574,7 +574,14 @@ export default function App() {
                 )}
                 {tab === "actions" && <ActionsView apps={state.apps} onRun={(command) => void runCommand(command)} />}
                 {tab === "settings" && (
-                  <SettingsView config={state.config} busy={busy} onConfig={(patch) => void applyConfig(patch)} onDisconnect={(provider) => void disconnect(provider)} />
+                  <SettingsView
+                    config={state.config}
+                    busy={busy}
+                    onConfig={(patch) => void applyConfig(patch)}
+                    onDisconnect={(provider) => void disconnect(provider)}
+                    onVerify={(provider, values) => api.verify(provider, values)}
+                    onNotice={showToast}
+                  />
                 )}
               </div>
 

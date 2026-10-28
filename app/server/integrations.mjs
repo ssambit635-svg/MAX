@@ -375,6 +375,99 @@ function systemStats() {
   };
 }
 
+
+/* --------------------------------------------------------- verify connect */
+
+const GITHUB_TOKEN_DOCS = "https://github.com/settings/tokens";
+
+/**
+ * Checks credentials *before* they are saved, so Settings can say "connected as @you"
+ * or the exact reason it failed, instead of silently storing a wrong key.
+ */
+export async function verifyIntegration(provider, input = {}) {
+  try {
+    if (provider === "github") {
+      const username = String(input.username ?? "").trim();
+      const token = String(input.token ?? "").trim();
+      if (!username && !token) return { ok: false, message: "Enter your GitHub username first." };
+
+      const headers = token ? { authorization: `Bearer ${token}`, "x-github-api-version": "2022-11-28" } : {};
+      if (token) {
+        let me;
+        try {
+          me = await fetchJson("https://api.github.com/user", { headers });
+        } catch (error) {
+          const status = String(error.message ?? "");
+          if (status.startsWith("401")) {
+            return { ok: false, message: "GitHub rejected that token (401). It may be expired, revoked, or mistyped — generate a new one." };
+          }
+          if (status.startsWith("403")) {
+            return { ok: false, message: "GitHub refused the request (403). Usually a rate limit or a token without the public_repo scope." };
+          }
+          throw error;
+        }
+        return {
+          ok: true,
+          message: `Token is valid — connected as @${me.login}${username && username !== me.login ? ` (showing @${username})` : ""}.`,
+          resolved: { login: me.login, name: me.name ?? me.login },
+        };
+      }
+      try {
+        const profile = await fetchJson(`https://api.github.com/users/${encodeURIComponent(username)}`, { headers });
+        return {
+          ok: true,
+          message: `Found @${profile.login} — ${profile.public_repos} public repos. Public data only, no token needed.`,
+          resolved: { login: profile.login, name: profile.name ?? profile.login },
+        };
+      } catch (error) {
+        if (String(error.message).startsWith("404")) {
+          return { ok: false, message: `GitHub has no user called “${username}”. Check the spelling — it is the part after github.com/.` };
+        }
+        throw error;
+      }
+    }
+
+    if (provider === "leetcode") {
+      const username = String(input.username ?? "").trim();
+      if (!username) return { ok: false, message: "Enter your LeetCode handle first." };
+      const data = await fetchJson("https://leetcode.com/graphql/", {
+        method: "POST",
+        headers: { "content-type": "application/json", referer: `https://leetcode.com/${username}/` },
+        body: JSON.stringify({ query: LEETCODE_QUERY, variables: { username } }),
+      });
+      const matched = data?.data?.matchedUser;
+      if (!matched) {
+        return { ok: false, message: `LeetCode has no user called “${username}”. It is the part after leetcode.com/u/.` };
+      }
+      const solved = matched.submitStatsGlobal?.acSubmissionNum?.find((entry) => entry.difficulty === "All")?.count ?? 0;
+      return { ok: true, message: `Found @${matched.username} — ${solved} problems solved.`, resolved: { username: matched.username } };
+    }
+
+    if (provider === "render") {
+      const apiKey = String(input.apiKey ?? "").trim();
+      if (!apiKey) return { ok: false, message: "Paste a Render API key first." };
+      try {
+        const services = await fetchJson("https://api.render.com/v1/services?limit=1", {
+          headers: { authorization: `Bearer ${apiKey}` },
+        });
+        const count = Array.isArray(services) ? services.length : 0;
+        return { ok: true, message: `Render key works — ${count > 0 ? "services found" : "key accepted, no services yet"}.` };
+      } catch (error) {
+        if (/40[13]/.test(String(error.message))) {
+          return { ok: false, message: "Render rejected that key. Create a new one under Account Settings → API Keys." };
+        }
+        throw error;
+      }
+    }
+
+    return { ok: false, message: `Unknown integration “${provider}”.` };
+  } catch (error) {
+    return { ok: false, message: `Could not reach ${provider}: ${error.message}` };
+  }
+}
+
+export { GITHUB_TOKEN_DOCS };
+
 export async function collectStats() {
   return cached("stats", async () => {
     const [github, leetcode, render, vscode] = await Promise.all([githubStats(), leetcodeStats(), renderStats(), vscodeStats()]);

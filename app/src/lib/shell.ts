@@ -7,6 +7,7 @@ export interface MaxShellBridge {
   dragBegin: (screenX: number, screenY: number) => void;
   dragMove: (screenX: number, screenY: number) => void;
   dragEnd: () => void;
+  openExternal: (url: string) => void;
   onOpenPalette: (callback: () => void) => () => void;
   onCollapse: (callback: () => void) => () => void;
 }

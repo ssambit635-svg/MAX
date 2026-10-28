@@ -12,7 +12,7 @@ const PORT_SEARCH_RANGE = 12;
 let BASE_URL = `http://127.0.0.1:${PREFERRED_PORT}`;
 
 const COLLAPSED = { width: 424, height: 104 };
-const EXPANDED = { width: 858, height: 636 };
+const EXPANDED = { width: 882, height: 664 };
 
 let win = null;
 let tray = null;
@@ -306,6 +306,15 @@ if (!singleInstance) {
       const x = Math.round(dragOrigin.x + (point.screenX - dragOrigin.screenX));
       const y = Math.round(dragOrigin.y + (point.screenY - dragOrigin.screenY));
       win.setPosition(x, y, false);
+    });
+
+    ipcMain.on("max:open-external", (_event, url) => {
+      try {
+        const parsed = new URL(String(url));
+        if (parsed.protocol === "https:" || parsed.protocol === "http:") shell.openExternal(parsed.href);
+      } catch {
+        console.warn("[max] refused to open a malformed link");
+      }
     });
 
     ipcMain.on("max:drag-end", () => {
