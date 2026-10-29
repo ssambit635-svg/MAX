@@ -111,9 +111,17 @@ export const APPS = [
     terms: ["terminal", "console", "shell", "command prompt", "powershell", "cmd"],
     closeName: "WindowsTerminal.exe",
     win: {
+      // Windows Terminal is a Store app: its `wt.exe` in WindowsApps is a 0-byte
+      // app-execution alias, so launching that path does nothing. Ask the Start
+      // menu for the real package id first, and fall back to good old cmd.exe,
+      // which is always a real file.
       exe: "wt.exe",
-      paths: ["%LOCALAPPDATA%\\Microsoft\\WindowsApps\\wt.exe", "%SystemRoot%\\System32\\cmd.exe"],
-      registry: "wt.exe",
+      preferStartMenu: true,
+      startNames: ["Windows Terminal", "Terminal", "Windows Terminal (Preview)"],
+      knownAppIds: ["Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", "Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe!App"],
+      paths: ["%SystemRoot%\\System32\\cmd.exe"],
+      registry: "cmd.exe",
+      consoleFallback: true,
     },
     mac: ["-a", "Terminal"],
     linux: "x-terminal-emulator",
@@ -182,6 +190,7 @@ export const APPS = [
         "%ProgramFiles%\\WhatsApp\\WhatsApp.exe",
       ],
       startNames: ["WhatsApp", "WhatsApp Beta"],
+      knownAppIds: ["5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"],
       protocol: "whatsapp:",
     },
     mac: ["-a", "WhatsApp"],
@@ -196,6 +205,7 @@ export const APPS = [
       exe: "Copilot.exe",
       paths: ["%LOCALAPPDATA%\\Microsoft\\WindowsApps\\Copilot.exe"],
       startNames: ["Copilot", "Microsoft Copilot", "Windows Copilot"],
+      knownAppIds: ["Microsoft.Copilot_8wekyb3d8bbwe!App", "Microsoft.Windows.Ai.Copilot.Provider_8wekyb3d8bbwe!App"],
     },
     mac: ["-a", "Copilot"],
     linux: "copilot",
@@ -209,6 +219,7 @@ export const APPS = [
       exe: "WindowsCamera.exe",
       paths: ["%ProgramFiles%\\WindowsApps\\*WindowsCamera*\\WindowsCamera.exe"],
       startNames: ["Camera"],
+      knownAppIds: ["Microsoft.WindowsCamera_8wekyb3d8bbwe!App"],
       protocol: "microsoft.windows.camera:",
     },
     mac: ["-a", "Photo Booth"],
@@ -317,6 +328,15 @@ function glob(pattern) {
       return [];
     }
   });
+}
+
+/**
+ * Programs under `...\WindowsApps\` are app-execution aliases: 0-byte stubs that
+ * only the shell can turn into a real app. Spawning one directly fails silently,
+ * which is exactly the "Terminal does nothing" bug.
+ */
+export function isAppExecutionAlias(candidate) {
+  return /\\WindowsApps\\/i.test(candidate) && /\.[a-z0-9]{2,4}$/i.test(candidate);
 }
 
 function findOnPath(exe) {
@@ -446,37 +466,72 @@ export async function resolveApp(app, { cache = true } = {}) {
 
   const win = app.win ?? {};
 
-  // 1. absolute candidates
-  const hits = (win.paths ?? []).flatMap((candidate) => glob(path.normalize(expand(candidate))));
-  if (hits.length) {
-    const exeHit = hits.find((hit) => /\.exe$/i.test(hit)) ?? hits[0];
-    return remember(app.id, { id: app.id, found: true, kind: "exe", target: exeHit });
-  }
+  const hits = (win.paths ?? [])
+    .flatMap((candidate) => glob(path.normalize(expand(candidate))))
+    .filter((hit) => !isAppExecutionAlias(hit));
 
-  // 2. PATH
-  if (win.exe) {
-    const onPath = findOnPath(win.exe);
-    if (onPath) return remember(app.id, { id: app.id, found: true, kind: "exe", target: onPath });
-  }
+  // Store-first apps ask the Start menu before anything else.
+  const storeFirst = win.preferStartMenu ? await fromStore(app) : null;
+  const onPath = !storeFirst && win.exe ? findOnPath(win.exe) : null;
+  const registered = !storeFirst && !onPath && win.registry ? await fromRegistry(win.registry) : null;
+  const storeLater = !storeFirst && !onPath && !registered ? await fromStore(app) : null;
 
-  // 3. registry (Office, Chrome, VS Code installers)
-  if (win.registry) {
-    const registered = await fromRegistry(win.registry);
-    if (registered) return remember(app.id, { id: app.id, found: true, kind: "exe", target: registered });
-  }
-
-  // 4. Microsoft Store apps
-  const appId = await fromStartMenu(app);
-  if (appId) return remember(app.id, { id: app.id, found: true, kind: "appx", target: appId });
-
-  // 5. URI protocol as the last honest option (Camera, Settings, ms-word:)
-  if (win.protocol) return remember(app.id, { id: app.id, found: true, kind: "protocol", target: win.protocol });
-
-  return remember(app.id, {
-    id: app.id,
-    found: false,
-    missing: [...(win.paths ?? []).map((p) => path.normalize(expand(p))), win.exe ? `${win.exe} (PATH)` : ""].filter(Boolean),
+  const choice = chooseWindowsTarget(app, {
+    hits,
+    onPath: onPath && !isAppExecutionAlias(onPath) ? onPath : null,
+    registered: registered && !isAppExecutionAlias(registered) ? registered : null,
+    appId: storeFirst ?? storeLater,
   });
+
+  if (!choice) {
+    return remember(app.id, {
+      id: app.id,
+      found: false,
+      missing: [...hits, win.exe ? `${win.exe} (PATH)` : ""].filter(Boolean),
+    });
+  }
+  return remember(app.id, choice);
+}
+
+/** Start-menu package id for Store apps, with stable ids as a fallback. */
+async function fromStore(app) {
+  const appId = await fromStartMenu(app);
+  if (appId) return appId;
+  const knownIds = app.win?.knownAppIds ?? [];
+  if (knownIds.length && startAppsCache.list.length === 0) return knownIds[0];
+  return null;
+}
+
+/**
+ * The Windows decision tree, as a pure function so it can be tested off Windows.
+ *
+ * Order: Store package (for Store-first apps) → real file on disk → PATH →
+ * registry App Paths → Store package → URI protocol.
+ */
+export function chooseWindowsTarget(app, { hits = [], onPath = null, registered = null, appId = null } = {}) {
+  const win = app.win ?? {};
+  const exe = (target) => ({
+    id: app.id,
+    found: true,
+    kind: "exe",
+    target,
+    args: launchArgs(win, target),
+  });
+  const realFile = hits.find((hit) => /\.exe$/i.test(hit)) ?? hits[0] ?? null;
+
+  if (win.preferStartMenu && appId) return { id: app.id, found: true, kind: "appx", target: appId };
+  if (realFile) return exe(realFile);
+  if (onPath) return exe(onPath);
+  if (registered) return exe(registered);
+  if (appId) return { id: app.id, found: true, kind: "appx", target: appId };
+  if (win.protocol) return { id: app.id, found: true, kind: "protocol", target: win.protocol };
+  return null;
+}
+
+/** A console app needs its own window; everything else is started bare. */
+export function launchArgs(win, target) {
+  if (win?.consoleFallback && /cmd\.exe$/i.test(String(target))) return ["/c", "start", "", "cmd.exe"];
+  return [];
 }
 
 /** Resolve every allowlisted app once, in parallel, for the Actions list. */
@@ -575,7 +630,14 @@ export async function launchApp(app, seen = new Set()) {
 
   if (resolution.kind === "appx") {
     const result = await spawnDetached("explorer.exe", [`shell:AppsFolder\\${resolution.target}`]);
-    return result.ok ? { ok: true, kind: "appx" } : { ok: false, reason: "launch-failed" };
+    if (result.ok) return { ok: true, kind: "appx" };
+    // A wrong package id is quiet: fall back to a plain console if this app has one.
+    const exe = (app.win?.paths ?? []).map((candidate) => glob(path.normalize(expand(candidate)))).flat()[0];
+    if (exe && !isAppExecutionAlias(exe)) {
+      const retry = await spawnDetached(exe, app.win?.consoleFallback ? ["/c", "start", "", "cmd.exe"] : []);
+      if (retry.ok) return { ok: true, kind: "exe" };
+    }
+    return { ok: false, reason: "launch-failed" };
   }
 
   if (resolution.kind === "protocol") {

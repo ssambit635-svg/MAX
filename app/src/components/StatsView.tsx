@@ -28,6 +28,15 @@ function Metric({ value, label, sub }: { value: string; label: string; sub?: str
   );
 }
 
+/** `win32` is a process detail, not something to show a person. */
+function prettyPlatform(platform: string) {
+  const key = String(platform ?? "").toLowerCase();
+  if (key.startsWith("win")) return "Windows";
+  if (key === "darwin" || key.startsWith("mac")) return "macOS";
+  if (key.startsWith("linux")) return "Linux";
+  return "This device";
+}
+
 export function StatsView({ stats, highlight, onConnect }: StatsViewProps) {
   const { github, leetcode, render, vscode, system } = stats;
   const solvedPct = leetcode.totals.all ? Math.round((leetcode.solved.all / leetcode.totals.all) * 100) : 0;
@@ -222,8 +231,8 @@ export function StatsView({ stats, highlight, onConnect }: StatsViewProps) {
       <section className="panel-card span-2" data-highlight={highlight === "system"}>
         <header className="panel-card__head">
           <h3>This machine</h3>
-          <Badge demo={false} text={system.platform} />
-          <span className="panel-card__who">{system.hostname}</span>
+          <Badge demo={false} text={prettyPlatform(system.platform)} />
+          <span className="panel-card__who">{system.uptimeHours}h this session</span>
         </header>
         <div className="gauges">
           <div className="gauge">

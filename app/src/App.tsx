@@ -78,8 +78,9 @@ export default function App() {
         payload.activity[0]?.detail ??
           `${greeting()}. Ask me for something small — open an app, save a note, check your stats.`,
       );
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "MAX could not reach its local service.");
+    } catch {
+      // Never surface the raw error: it contains ports, paths and fetch internals.
+      setLoadError("unreachable");
     }
   }, []);
 
@@ -301,8 +302,8 @@ export default function App() {
               : prev,
           );
         }
-      } catch (error) {
-        showToast(error instanceof Error ? error.message : "That didn't work.", "error");
+      } catch {
+        showToast("I couldn't finish that one. Try again.", "error");
         flashMood("error");
       } finally {
         setBusy(false);
@@ -324,8 +325,8 @@ export default function App() {
       setNoteOpen(false);
       setCaption(result.message);
       flashMood("celebrate", 3600);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "That note didn't save.", "error");
+    } catch {
+      showToast("That note didn't save. Try again.", "error");
       flashMood("error");
     } finally {
       setBusy(false);
@@ -340,8 +341,8 @@ export default function App() {
         setState((prev) => (prev ? { ...prev, config: result.config, stats: result.stats } : prev));
         showToast("Saved.", "ok");
         flashMood("happy", 2000);
-      } catch (error) {
-        showToast(error instanceof Error ? error.message : "Could not save that.", "error");
+      } catch {
+        showToast("I couldn't save those settings. Try again.", "error");
         flashMood("error");
       } finally {
         setBusy(false);
@@ -357,8 +358,8 @@ export default function App() {
         const result = await api.disconnect(provider);
         setState((prev) => (prev ? { ...prev, config: result.config, stats: result.stats } : prev));
         showToast(`${provider} disconnected.`, "ok");
-      } catch (error) {
-        showToast(error instanceof Error ? error.message : "Could not disconnect.", "error");
+      } catch {
+        showToast("I couldn't disconnect that. Try again.", "error");
       } finally {
         setBusy(false);
       }
@@ -425,7 +426,9 @@ export default function App() {
           </div>
         </div>
         <div className="footer-note">
-          {loadError ? `Local service unreachable — ${loadError}` : "Starting the island service…"}
+          {loadError
+            ? "I can't reach my local service. Quit MAX from the tray and open it again."
+            : "Starting up…"}
         </div>
       </div>
     );
