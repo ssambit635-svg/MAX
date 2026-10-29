@@ -170,8 +170,6 @@ const BY_EXTENSION = new Map(
   LANGUAGES.flatMap((language) => language.extensions.map((extension) => [extension.toLowerCase(), language])),
 );
 
-export const languageIds = () => LANGUAGES.map((language) => language.id);
-
 export function getLanguage(id) {
   if (!id) return null;
   return BY_ID.get(String(id).toLowerCase()) ?? null;

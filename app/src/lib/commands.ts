@@ -4,7 +4,7 @@ export interface Suggestion {
   group: string;
 }
 
-export const BASE_SUGGESTIONS: Suggestion[] = [
+const BASE_SUGGESTIONS: Suggestion[] = [
   { cmd: "open chrome", desc: "Browser", group: "Apps" },
   { cmd: "open edge", desc: "Browser", group: "Apps" },
   { cmd: "open word", desc: "Document", group: "Apps" },

@@ -1,6 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { loadConfig } from "./store.mjs";
 
 const isWin = process.platform === "win32";
 const isMac = process.platform === "darwin";
@@ -257,6 +258,90 @@ export const APPS = [
   },
 ];
 
+/* --------------------------------------------------------------- custom apps */
+
+/** Program folders a user-defined launcher may point into. */
+const BLOCKED_CUSTOM = /(^|[\\/])(windows|system32|syswow64|programdata)([\\/]|$)/i;
+
+/** Turn the config's custom launchers into allowlist entries. */
+export function customApps(configured = readConfiguredApps()) {
+  return (configured ?? [])
+    .filter((entry) => entry && typeof entry.name === "string" && typeof entry.path === "string")
+    .filter((entry) => /\.(exe|bat|cmd|lnk|app|sh)$/i.test(entry.path) || process.platform !== "win32")
+    .filter((entry) => !BLOCKED_CUSTOM.test(entry.path))
+    .slice(0, 40)
+    .map((entry) => {
+      const name = entry.name.trim().slice(0, 40);
+      const id = `custom-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+      return {
+        id,
+        label: name,
+        terms: [normalise(name)],
+        custom: true,
+        target: entry.path,
+        win: { direct: true, paths: [entry.path] },
+        mac: [entry.path],
+        linux: entry.path,
+      };
+    });
+}
+
+/** Forget one of the user's own launchers. Built-ins cannot be removed. */
+export function removeCustomApp(name, configured = readConfiguredApps()) {
+  const needle = normalise(name);
+  const remaining = configured.filter((entry) => normalise(entry.name) !== needle);
+  if (remaining.length === configured.length) {
+    const exists = APPS.some((app) => app.terms.includes(needle) || normalise(app.label) === needle);
+    return {
+      ok: false,
+      message: exists ? `“${String(name).trim()}” is built in, so it always stays.` : `There's no custom app called “${String(name).trim()}”.`,
+    };
+  }
+  return { ok: true, name: configured.find((entry) => normalise(entry.name) === needle)?.name, next: remaining };
+}
+
+/** Every app MAX knows: the built-in allowlist plus the user's own launchers. */
+function allApps(configured = readConfiguredApps()) {
+  return [...APPS, ...customApps(configured)];
+}
+
+/** The custom launchers from the saved config, or nothing if it cannot be read. */
+function readConfiguredApps() {
+  try {
+    return loadConfig().customApps ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** @returns {{ok:true, app}|{ok:false, message:string}} */
+export function addCustomApp(name, target) {
+  const cleanName = String(name ?? "").trim().slice(0, 40);
+  const rawPath = String(target ?? "").trim().replace(/^"|"$/g, "");
+  if (!cleanName) return { ok: false, message: "Give the app a name, like “Figma”." };
+  if (!rawPath) return { ok: false, message: "Paste the app's full path after the name." };
+
+  const resolved = path.resolve(rawPath);
+  if (BLOCKED_CUSTOM.test(resolved)) return { ok: false, message: "That path is inside a system folder, so I won't add it." };
+  if (!fs.existsSync(resolved)) return { ok: false, message: "That path doesn't exist on this machine." };
+  const stat = fs.statSync(resolved);
+  if (!stat.isFile()) return { ok: false, message: "Point me at the app's .exe file, not a folder." };
+  if (stat.size > 0 && !/\.(exe|bat|cmd|lnk|app|sh)$/i.test(resolved)) {
+    return { ok: false, message: "That file doesn't look like a program." };
+  }
+
+  const existing = customApps();
+  if (existing.some((app) => normalise(app.label) === normalise(cleanName))) {
+    return { ok: false, message: `You already added “${cleanName}”.` };
+  }
+  if (APPS.some((app) => app.terms.includes(normalise(cleanName)))) {
+    return { ok: false, message: `“${cleanName}” is already built in.` };
+  }
+
+  const next = [...(loadConfig().customApps ?? []), { name: cleanName, path: resolved }];
+  return { ok: true, app: { name: cleanName, path: resolved }, next };
+}
+
 /* ------------------------------------------------------------------ matching */
 
 function normalise(text) {
@@ -267,17 +352,18 @@ function normalise(text) {
     .trim();
 }
 
-export function findApp(text) {
+export function findApp(text, configured) {
   const needle = normalise(text).replace(/^(the|my|a) /, "").replace(/ (app|window|please)$/, "");
   if (!needle) return null;
 
-  const exact = APPS.find((app) => app.terms.includes(needle) || normalise(app.label) === needle);
+  const known = allApps(configured);
+  const exact = known.find((app) => app.terms.includes(needle) || normalise(app.label) === needle);
   if (exact) return exact;
 
   // longest term wins, so "microsoft word" never lands on "word" inside another app
   let best = null;
   let bestLength = 0;
-  for (const app of APPS) {
+  for (const app of known) {
     for (const term of [...app.terms, normalise(app.label)]) {
       if (!term) continue;
       if (needle === term || needle.startsWith(`${term} `) || needle.endsWith(` ${term}`) || needle.includes(term)) {
@@ -290,7 +376,7 @@ export function findApp(text) {
   }
   // one-word typos of two letters or more still match on the term prefix ("chrom" → chrome)
   if (!best && needle.length >= 4) {
-    best = APPS.find((app) => app.terms.some((term) => term.length >= 4 && term.startsWith(needle))) ?? null;
+    best = known.find((app) => app.terms.some((term) => term.length >= 4 && term.startsWith(needle))) ?? null;
   }
   return best;
 }
@@ -537,7 +623,7 @@ export function launchArgs(win, target) {
 /** Resolve every allowlisted app once, in parallel, for the Actions list. */
 export async function probeApps() {
   const entries = await Promise.all(
-    APPS.map(async (app) => {
+    allApps().map(async (app) => {
       const result = await resolveApp(app, { cache: false });
       return { id: app.id, label: app.label, terms: app.terms, available: result.found, how: result.kind ?? null };
     }),
@@ -545,8 +631,8 @@ export async function probeApps() {
   return entries;
 }
 
-export function appCatalog() {
-  return APPS.map(({ id, label, terms }) => {
+export function appCatalog(configured) {
+  return allApps(configured).map(({ id, label, terms }) => {
     const cached = resolved.get(id);
     return {
       id,
@@ -605,6 +691,14 @@ export function openUrl(url) {
 export async function launchApp(app, seen = new Set()) {
   if (!app || seen.has(app.id)) return { ok: false, reason: "unknown" };
   seen.add(app.id);
+
+  if (app.custom) {
+    if (!fs.existsSync(app.target)) {
+      return { ok: false, reason: "missing", tried: [app.target] };
+    }
+    const result = await spawnDetached(app.target, []);
+    return result.ok ? { ok: true, kind: "exe" } : { ok: false, reason: "launch-failed" };
+  }
 
   const resolution = await resolveApp(app);
 

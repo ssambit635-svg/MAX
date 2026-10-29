@@ -1,6 +1,9 @@
 import type {
   AppEntry,
   CodeFile,
+  DiagnosticsPayload,
+  ScanResult,
+  SnippetEntry,
   CodeFixResult,
   CodeMeta,
   CodeReview,
@@ -43,6 +46,17 @@ export const api = {
   notes: () => request<{ notes: NoteEntry[] }>("/api/notes"),
   apps: () => request<{ apps: AppEntry[] }>("/api/apps"),
   codeMeta: () => request<CodeMeta>("/api/code/meta"),
+  codeScan: (root?: string) =>
+    request<ScanResult>("/api/code/scan", { method: "POST", body: JSON.stringify({ root }) }),
+  snippets: () => request<{ snippets: SnippetEntry[] }>("/api/code/snippets"),
+  saveSnippet: (name: string, code: string) =>
+    request<{ ok: boolean; message?: string }>("/api/code/snippets", { method: "POST", body: JSON.stringify({ name, code }) }),
+  copySnippet: (name: string) =>
+    request<{ ok: boolean; snippet?: { name: string; code: string } }>("/api/code/snippet/copy", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  diagnostics: () => request<DiagnosticsPayload>("/api/diagnostics"),
   codeReview: (code: string, language: string) =>
     request<CodeReview>("/api/code/review", { method: "POST", body: JSON.stringify({ code, language }) }),
   codeFix: (code: string, language: string) =>

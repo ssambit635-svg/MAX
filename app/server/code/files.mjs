@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { detectLanguage, LANGUAGES } from "./languages.mjs";
 
-const MAX_BYTES = 512 * 1024;
+export const MAX_BYTES = 512 * 1024;
 const EXTENSIONS = new Set(LANGUAGES.flatMap((language) => language.extensions));
 
 const BLOCKED_DIRS = [
@@ -38,6 +38,12 @@ function isInside(parent, child) {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
+/** Public form of the guard, for callers that read a folder rather than a file. */
+export function isBlockedPath(target) {
+  return Boolean(blockedReason(path.resolve(String(target ?? ""))));
+}
+
+/** The raw reason, when a caller wants to show it. */
 function blockedReason(target) {
   const normalised = target.replace(/\\/g, "/").toLowerCase();
   const segments = normalised.split("/").filter(Boolean);
@@ -147,4 +153,3 @@ export function listWorkspace(workspace) {
   return found.sort((a, b) => b.modified.localeCompare(a.modified)).slice(0, 40);
 }
 
-export { MAX_BYTES, EXTENSIONS };

@@ -105,9 +105,12 @@ export interface PublicConfig {
   codeDir: string;
   prefs: {
     launchAtLogin: boolean;
+    alwaysOnTop: boolean;
     reduceMotion: boolean;
     keepIslandOpen: boolean;
     idleSleepSeconds: number;
+    language: string;
+    lastSeenVersion: string;
   };
   github: { username: string; connected: boolean };
   leetcode: { username: string; connected: boolean };
@@ -176,6 +179,49 @@ export interface CodeLanguage {
   extensions: string[];
 }
 
+export interface ScanIssue {
+  severity: Severity;
+  title: string;
+  line: number;
+  message: string;
+}
+
+export interface ScanReport {
+  path: string;
+  name: string;
+  language: string;
+  score: number;
+  errors: number;
+  warnings: number;
+  hints: number;
+  issues: ScanIssue[];
+}
+
+export interface ScanResult {
+  ok: boolean;
+  message?: string;
+  root?: string;
+  score?: number;
+  clean?: boolean;
+  skipped?: number;
+  summary?: { files: number; errors: number; warnings: number; hints: number; lines: number };
+  languages?: { id: string; label: string; files: number }[];
+  worst?: ScanReport[];
+}
+
+export interface SnippetEntry {
+  name: string;
+  size: number;
+  lines: number;
+  at: string;
+}
+
+export interface DiagnosticsPayload {
+  version: string;
+  summary: string;
+  log: { at: string | null; level: string; message: string }[];
+}
+
 export interface CodeMeta {
   languages: CodeLanguage[];
   workspace: string;
@@ -206,6 +252,9 @@ export interface CommandUi {
   composer?: "note";
   savedNote?: { file: string; name: string };
   launched?: { id: string; label: string };
+  openCode?: { path: string; language: string; code: string };
+  scan?: ScanResult;
+  copy?: string;
   focusMinutes?: number;
   timerMinutes?: number;
   sleep?: boolean;

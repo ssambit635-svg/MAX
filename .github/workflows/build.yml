@@ -62,6 +62,12 @@ jobs:
       - name: Editor syntax highlighting
         run: npm run test:highlight
 
+      - name: Codebase housekeeping (dead CSS, dead exports, dead prefs)
+        run: npm run test:codebase
+
+      - name: Snippets, project scan and diagnostics
+        run: npm run test:tools
+
       - name: Smoke-test the local service
         run: |
           node server/index.mjs &
@@ -80,6 +86,16 @@ jobs:
             -H 'content-type: application/json' -d '{"text":"ci smoke test"}'
           curl -sf http://127.0.0.1:7999/api/state > /dev/null
           curl -sf http://127.0.0.1:7999/api/code/meta
+          curl -sf -X POST http://127.0.0.1:7999/api/code/scan \
+            -H 'content-type: application/json' -d '{"root":"src"}'
+          curl -sf http://127.0.0.1:7999/api/code/snippets
+          curl -sf http://127.0.0.1:7999/api/diagnostics | grep -q summary
+          curl -sf -X POST http://127.0.0.1:7999/api/command \
+            -H 'content-type: application/json' -d '{"input":"scan src"}'
+          curl -sf -X POST http://127.0.0.1:7999/api/command \
+            -H 'content-type: application/json' -d '{"input":"save snippet ci: echo ci"}'
+          curl -sf -X POST http://127.0.0.1:7999/api/command \
+            -H 'content-type: application/json' -d '{"input":"check src/App.tsx"}'
           curl -sf -X POST http://127.0.0.1:7999/api/code/review \
             -H 'content-type: application/json' \
             -d '{"code":"def f():\n    if a == None:\n        pass\n","language":"python"}' \
@@ -121,6 +137,37 @@ jobs:
         run: |
           ls -lh release/
           test -n "$(ls release/*.exe 2>/dev/null)" || { echo "::error::no installer produced"; exit 1; }
+
+      # Roadmap item: prove the installer actually installs, not just builds.
+      - name: Install silently and check the installed layout
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem release/*.exe | Where-Object { $_.Name -notmatch 'portable' } | Select-Object -First 1
+          if (-not $installer) { Write-Error "no NSIS installer found"; exit 1 }
+          Write-Host "installing $($installer.Name)"
+          Start-Process -FilePath $installer.FullName -ArgumentList '/S', '/currentuser' -Wait
+          $root = Join-Path $env:LOCALAPPDATA 'Programs\MAX'
+          if (-not (Test-Path (Join-Path $root 'MAX.exe'))) { Write-Error "MAX.exe missing after install"; exit 1 }
+          if (-not (Test-Path (Join-Path $root 'resources\app.asar'))) { Write-Error "app.asar missing"; exit 1 }
+          $server = Join-Path $root 'resources\app.asar.unpacked\server\index.mjs'
+          if (-not (Test-Path $server)) { Write-Error "unpacked server missing"; exit 1 }
+          $size = (Get-ChildItem $root -Recurse | Measure-Object Length -Sum).Sum / 1MB
+          Write-Host ("installed size: {0:N1} MB" -f $size)
+          Write-Host "install layout OK"
+
+      - name: Check the updater feed was produced
+        shell: bash
+        run: |
+          ls release/*.yml || true
+          test -f release/latest.yml || { echo "::error::electron-updater needs latest.yml"; exit 1; }
+
+      - name: Uninstall the test copy
+        if: always()
+        shell: pwsh
+        run: |
+          $uninstaller = Join-Path $env:LOCALAPPDATA 'Programs\MAX\Uninstall MAX.exe'
+          if (Test-Path $uninstaller) { Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait }
+          else { Write-Host "no uninstaller found - nothing to clean" }
 
       - name: Show log on failure
         if: failure()

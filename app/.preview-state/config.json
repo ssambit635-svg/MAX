@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "saveDir": "/home/user/Documents/MAX notes",
+  "codeDir": "/home/user/Documents/MAX code",
+  "github": {
+    "username": "ssambit635-svg",
+    "token": ""
+  },
+  "leetcode": {
+    "username": "sambitswain25"
+  },
+  "render": {
+    "apiKey": ""
+  },
+  "customApps": [],
+  "prefs": {
+    "launchAtLogin": false,
+    "alwaysOnTop": true,
+    "reduceMotion": false,
+    "keepIslandOpen": false,
+    "idleSleepSeconds": 120,
+    "language": "en",
+    "lastSeenVersion": ""
+  },
+  "preset": {
+    "applied": true,
+    "owner": "ssambit635-svg"
+  }
+}

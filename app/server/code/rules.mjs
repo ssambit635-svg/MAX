@@ -12,7 +12,6 @@ import { delimiterProblems, indentProfile, lineOf, replaceAt, splitLines } from 
 
 const JS_TS = ["javascript", "typescript"];
 const C_FAMILY = ["c", "cpp"];
-const STYLE = ["javascript", "typescript", "java", "csharp", "cpp", "c", "rust", "swift", "css"];
 
 const matches = (masked, pattern) => {
   const found = [];
@@ -942,7 +941,7 @@ const dataRules = [
   },
 ];
 
-export const RULES = [
+const RULES = [
   ...commonRules,
   ...pythonRules,
   ...jsRules,
@@ -963,4 +962,3 @@ export function rulesFor(language) {
   });
 }
 
-export { STYLE, JS_TS, C_FAMILY };

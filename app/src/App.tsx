@@ -9,38 +9,24 @@ import { StarterCard } from "./components/StarterCard";
 import { api } from "./lib/api";
 import { filterSuggestions, type Suggestion } from "./lib/commands";
 import { greeting } from "./lib/format";
-import { inDesktopShell, shellBridge } from "./lib/shell";
+import { shellBridge } from "./lib/shell";
+import { latestRelease, shouldAnnounce } from "./lib/changelog";
+import { setLanguage } from "./lib/i18n";
+import { isDesktopShell, moodLine, tabLabel, TABS } from "./lib/ui";
+import { useLiveStream } from "./lib/useLiveStream";
 import { useWindowDrag } from "./lib/useWindowDrag";
 import type { CommandResult, IntegrationId, Mood, StatePayload, Tab } from "./lib/types";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "now", label: "Now" },
-  { id: "code", label: "Code" },
-  { id: "stats", label: "Stats" },
-  { id: "actions", label: "Actions" },
-  { id: "settings", label: "Settings" },
-];
-
-const MOOD_COPY: Record<Mood, string> = {
-  idle: "ready when you are",
-  listening: "listening",
-  thinking: "working on it",
-  working: "in focus",
-  happy: "on it",
-  sleepy: "resting",
-  error: "needs a hand",
-  celebrate: "nice one",
-};
-
-const IS_SHELL =
-  inDesktopShell() ||
-  (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("shell") === "desktop");
+const IS_SHELL = isDesktopShell();
 
 export default function App() {
   const [state, setState] = useState<StatePayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  // "Stay open" in Settings means Esc must not fold the island.
+  const pinned = Boolean(state?.config.prefs.keepIslandOpen);
   const [tab, setTab] = useState<Tab>("now");
+  const [pendingCode, setPendingCode] = useState<{ path: string; language: string; code: string } | null>(null);
   const [mood, setMood] = useState<Mood>("idle");
   const [caption, setCaption] = useState("");
   const [toast, setToast] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
@@ -67,7 +53,6 @@ export default function App() {
   const toastTimer = useRef<number | null>(null);
   const highlightTimer = useRef<number | null>(null);
   const lastActionAt = useRef(Date.now());
-  const sseAlive = useRef(false);
 
   /* -------------------------------------------------------------- bootstrap */
 
@@ -114,6 +99,32 @@ export default function App() {
     document.body.dataset.motion = state?.config.prefs.reduceMotion ? "reduced" : "animated";
   }, [state?.config.prefs.reduceMotion]);
 
+  // Show the release notes once per version, then remember that they were seen.
+  useEffect(() => {
+    if (!state) return;
+    if (!shouldAnnounce(state.version, state.config.prefs.lastSeenVersion)) return;
+    const release = latestRelease();
+    setExpanded(true);
+    setTab("settings");
+    showToast(`Updated to ${release.version} — ${release.title}.`, "ok");
+    applyConfig({ prefs: { lastSeenVersion: state.version } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.version]);
+
+  // Language lives in prefs, so a change repaints without a reload.
+  useEffect(() => {
+    setLanguage(state?.config.prefs.language);
+  }, [state?.config.prefs.language]);
+
+  // Two prefs are owned by the desktop shell: the OS login item and always-on-top.
+  // Settings and the tray menu both write them, so both read from the same config.
+  useEffect(() => {
+    const bridge = shellBridge();
+    if (!bridge || !state) return;
+    bridge.setLoginItem(state.config.prefs.launchAtLogin);
+    bridge.setAlwaysOnTop(state.config.prefs.alwaysOnTop);
+  }, [state?.config.prefs.launchAtLogin, state?.config.prefs.alwaysOnTop]);
+
   useEffect(() => {
     if (!state) return;
     const id = window.setInterval(async () => {
@@ -129,37 +140,10 @@ export default function App() {
 
   /* ------------------------------------------------------------------ live */
 
-  useEffect(() => {
-    let source: EventSource | null = null;
-    let retry = 0;
-    const connect = () => {
-      source = new EventSource("/api/events");
-      source.addEventListener("hello", () => {
-        sseAlive.current = true;
-      });
-      source.addEventListener("activity", (event) => {
-        const payload = JSON.parse((event as MessageEvent).data) as {
-          activity: StatePayload["activity"];
-        };
-        setState((prev) => (prev ? { ...prev, activity: payload.activity } : prev));
-      });
-      source.addEventListener("notes", (event) => {
-        const payload = JSON.parse((event as MessageEvent).data) as { notes: StatePayload["notes"] };
-        setState((prev) => (prev ? { ...prev, notes: payload.notes } : prev));
-      });
-      source.onerror = () => {
-        sseAlive.current = false;
-        source?.close();
-        retry = Math.min(retry + 1, 6);
-        window.setTimeout(connect, retry * 1200);
-      };
-    };
-    connect();
-    return () => {
-      sseAlive.current = false;
-      source?.close();
-    };
-  }, []);
+  const sseAlive = useLiveStream({
+    onActivity: (activity) => setState((prev) => (prev ? { ...prev, activity } : prev)),
+    onNotes: (notes) => setState((prev) => (prev ? { ...prev, notes } : prev)),
+  });
 
   /* --------------------------------------------------------------- idleness */
 
@@ -261,6 +245,10 @@ export default function App() {
           setExpanded(true);
         }
         if (result.ui?.highlight) glowCard(result.ui.highlight);
+        if (result.ui?.openCode) setPendingCode(result.ui.openCode);
+        if (result.ui?.copy) {
+          void navigator.clipboard.writeText(result.ui.copy).catch(() => undefined);
+        }
         if (result.ui?.focusMinutes) {
           setFocusUntil(Date.now() + result.ui.focusMinutes * 60_000);
           setTab("now");
@@ -353,6 +341,16 @@ export default function App() {
     [flashMood, showToast],
   );
 
+  // The tray menu can change the same two prefs; persist whatever it sends so the
+  // two surfaces never disagree.
+  useEffect(() => {
+    const bridge = shellBridge();
+    if (!bridge) return;
+    return bridge.onPrefChanged((prefs) => {
+      void applyConfig(prefs).catch(() => undefined);
+    });
+  }, [applyConfig]);
+
   const disconnect = useCallback(
     async (provider: string) => {
       setBusy(true);
@@ -384,12 +382,12 @@ export default function App() {
           setNoteOpen(false);
           return;
         }
-        if (expanded) setExpanded(false);
+        if (expanded && !pinned) setExpanded(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [expanded, noteOpen]);
+  }, [expanded, noteOpen, pinned]);
 
   /* ------------------------------------------------------------ suggestions */
 
@@ -437,11 +435,12 @@ export default function App() {
   }
 
   const focusMinutesLeft = focusUntil ? Math.max(0, Math.round((focusUntil - Date.now()) / 60000)) : 0;
-  const statusText = focusUntil ? `${focusMinutesLeft}m focus left` : MOOD_COPY[mood];
+  const statusText = focusUntil ? `${focusMinutesLeft}m focus left` : moodLine(mood);
 
   return (
     <div className="stage">
       <div className="stage__inner">
+        <h1 className="visually-hidden">MAX — desktop companion</h1>
         <div className="island" data-expanded={expanded} data-pulse={mood === "working" || mood === "celebrate"}>
           <button
             className="pill"
@@ -476,7 +475,7 @@ export default function App() {
             </span>
           </button>
 
-          <div className="panel">
+          <div className="panel" role="dialog" aria-modal="true" aria-label="MAX island">
             <div className="panel__clip">
               <div className="panel__top">
                 <div className="brand">
@@ -510,7 +509,7 @@ export default function App() {
                         lastActionAt.current = Date.now();
                       }}
                     >
-                      {entry.label}
+                      {tabLabel(entry.id)}
                     </button>
                   ))}
                 </nav>
@@ -560,7 +559,7 @@ export default function App() {
                     }}
                   />
                 )}
-                {tab === "code" && <CodeView onNotice={showToast} />}
+                {tab === "code" && <CodeView onNotice={showToast} initial={pendingCode} onConsumeInitial={() => setPendingCode(null)} />}
                 {tab === "stats" && (
                   <StatsView
                     stats={state.stats}
@@ -652,8 +651,8 @@ export default function App() {
             </div>
           </div>
 
-          <div className="toast" data-show={toast !== null} data-tone={toast?.tone}>
-            <span className="toast__dot" />
+          <div className="toast" data-show={toast !== null} data-tone={toast?.tone} role="status" aria-live="polite">
+            <span className="toast__dot" aria-hidden="true" />
             {toast?.text}
           </div>
         </div>

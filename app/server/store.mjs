@@ -16,11 +16,16 @@ const DEFAULT_CONFIG = {
   github: { username: "", token: "" },
   leetcode: { username: "" },
   render: { apiKey: "" },
+  /** User-defined launchers: { name, path } — see server/apps.mjs. */
+  customApps: [],
   prefs: {
     launchAtLogin: false,
+    alwaysOnTop: true,
     reduceMotion: false,
     keepIslandOpen: false,
     idleSleepSeconds: 120,
+    language: "en",
+    lastSeenVersion: "",
   },
 };
 
@@ -89,6 +94,7 @@ export function publicConfig(config = loadConfig()) {
     github: { username: config.github.username, connected: Boolean(config.github.token || config.github.username) },
     leetcode: { username: config.leetcode.username, connected: Boolean(config.leetcode.username) },
     render: { connected: Boolean(config.render.apiKey) },
+    customApps: (config.customApps ?? []).map((app) => ({ name: app.name })),
     preset: config.preset?.applied ? { applied: true, owner: config.preset.owner } : { applied: false },
   };
 }
@@ -115,4 +121,3 @@ export function appendActivity(entry) {
   return trimmed;
 }
 
-export { DEFAULT_CONFIG };

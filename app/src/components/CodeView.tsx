@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { highlight } from "../lib/highlight";
-import type { CodeFixResult, CodeIssue, CodeLanguage, CodeMeta, CodeReview, Severity } from "../lib/types";
+import type { CodeFixResult, CodeIssue, CodeLanguage, CodeMeta, CodeReview, ScanResult, Severity, SnippetEntry } from "../lib/types";
 
 interface CodeViewProps {
   onNotice?: (text: string, tone: "ok" | "error") => void;
+  /** A file handed over by a command such as “check ~/project/main.py”. */
+  initial?: { path: string; language: string; code: string } | null;
+  onConsumeInitial?: () => void;
 }
 
 const SAMPLE = `def greet(name):
@@ -18,7 +21,7 @@ const SAMPLE = `def greet(name):
 
 const SEVERITY_LABEL: Record<Severity, string> = { error: "error", warn: "warning", info: "hint" };
 
-export function CodeView({ onNotice }: CodeViewProps) {
+export function CodeView({ onNotice, initial, onConsumeInitial }: CodeViewProps) {
   const [meta, setMeta] = useState<CodeMeta | null>(null);
   const [language, setLanguage] = useState("python");
   const [code, setCode] = useState(SAMPLE);
@@ -29,6 +32,9 @@ export function CodeView({ onNotice }: CodeViewProps) {
   const [openPath, setOpenPath] = useState("");
   const [showOpen, setShowOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [scan, setScan] = useState<ScanResult | null>(null);
+  const [snippets, setSnippets] = useState<SnippetEntry[]>([]);
+  const [scanning, setScanning] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightRef = useRef<HTMLPreElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
@@ -60,6 +66,35 @@ export function CodeView({ onNotice }: CodeViewProps) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .snippets()
+      .then((result) => {
+        if (!cancelled) setSnippets(result.snippets);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A command can hand the tab a file; load it once and clear the hand-off.
+  useEffect(() => {
+    if (!initial) return;
+    setCode(initial.code);
+    setLanguage(initial.language);
+    setPath(initial.path);
+    setDirty(false);
+    setScan(null);
+    void api
+      .codeReview(initial.code, initial.language)
+      .then(setReview)
+      .catch(() => undefined);
+    onConsumeInitial?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial]);
 
   // First look at the sample so the tab never opens empty.
   useEffect(() => {
@@ -142,6 +177,53 @@ export function CodeView({ onNotice }: CodeViewProps) {
     }
   };
 
+  const scanFolder = async () => {
+    setScanning(true);
+    try {
+      const result = await api.codeScan();
+      setScan(result);
+      onNotice?.(result.message ?? (result.ok ? "Scan finished." : "I couldn't scan that folder."), result.ok ? "ok" : "error");
+    } catch {
+      onNotice?.("I couldn't scan that folder.", "error");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const openFromScan = async (target: string) => {
+    try {
+      const result = await api.codeOpen(target);
+      if (!result.ok) {
+        onNotice?.(result.message ?? "I couldn't open that file.", "error");
+        return;
+      }
+      const opened = { code: result.code ?? "", language: result.language ?? "python", path: result.path ?? "" };
+      setCode(opened.code);
+      setLanguage(opened.language);
+      setPath(opened.path);
+      setDirty(false);
+      setScan(null);
+      const refreshed = await api.codeReview(opened.code, opened.language);
+      setReview(refreshed);
+    } catch {
+      onNotice?.("I couldn't open that file.", "error");
+    }
+  };
+
+  const copySnippet = async (name: string) => {
+    try {
+      const result = await api.copySnippet(name);
+      if (!result.ok || !result.snippet) {
+        onNotice?.("No snippet by that name.", "error");
+        return;
+      }
+      await navigator.clipboard.writeText(result.snippet.code);
+      onNotice?.(`“${result.snippet.name}” copied.`, "ok");
+    } catch {
+      onNotice?.("I couldn't copy that snippet.", "error");
+    }
+  };
+
   const lines = useMemo(() => code.split("\n"), [code]);
   const lineNumbers = useMemo(() => Array.from({ length: lines.length }, (_value, index) => index + 1), [lines]);
   const highlighted = useMemo(() => highlight(code.endsWith("\n") ? code : `${code} `, language), [code, language]);
@@ -208,6 +290,9 @@ export function CodeView({ onNotice }: CodeViewProps) {
         </button>
         <button className="btn" onClick={() => void save()} disabled={busy}>
           Save
+        </button>
+        <button className="btn" onClick={() => void scanFolder()} disabled={scanning || busy}>
+          {scanning ? "Scanning…" : "Scan folder"}
         </button>
         <button className="icon-btn" onClick={() => setShowOpen((value) => !value)} aria-label="Open a file">
           <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
@@ -310,6 +395,42 @@ export function CodeView({ onNotice }: CodeViewProps) {
         </div>
         <span className="code__saved">{dirty ? "unsaved" : path ? "saved" : "scratch"}</span>
       </div>
+
+      {snippets.length > 0 && (
+        <div className="snippet-strip">
+          {snippets.slice(0, 6).map((entry) => (
+            <button className="chip" key={entry.name} onClick={() => void copySnippet(entry.name)} title={`${entry.lines} line(s)`}>
+              {entry.name}
+            </button>
+          ))}
+          <span className="snippet-strip__note">click to copy · say “save snippet name: code”</span>
+        </div>
+      )}
+
+      {scan?.ok && (
+        <div className="scan">
+          <div className="scan__head">
+            <span className="scan__score" data-tone={scan.score && scan.score >= 90 ? "good" : scan.score && scan.score >= 70 ? "warn" : "bad"}>
+              {scan.score}
+            </span>
+            <span className="scan__meta">
+              {scan.summary?.files ?? 0} files · {scan.summary?.errors ?? 0} errors · {scan.summary?.warnings ?? 0} warnings
+            </span>
+            <button className="scan__close" onClick={() => setScan(null)} aria-label="Close scan">
+              ✕
+            </button>
+          </div>
+          {(scan.worst ?? []).slice(0, 5).map((entry) => (
+            <button className="scan__row" key={entry.path} onClick={() => void openFromScan(entry.path)}>
+              <span className="scan__name">{entry.name}</span>
+              <span className="scan__issue">{entry.issues[0]?.title ?? "clean"}</span>
+              <span className="scan__value" data-tone={entry.score >= 90 ? "good" : entry.score >= 70 ? "warn" : "bad"}>
+                {entry.score}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="code__issues">
         {review && review.issues.length === 0 && <div className="empty">Nothing to fix. This file reads clean.</div>}

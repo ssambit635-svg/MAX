@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { loadConfig } from "./store.mjs";
-import { APPS, appCatalog, closeApp, findApp, launchApp, openUrl } from "./apps.mjs";
+import { loadConfig, saveConfig } from "./store.mjs";
+import { APPS, addCustomApp, appCatalog, closeApp, findApp, launchApp, openUrl, removeCustomApp } from "./apps.mjs";
+import { scanMessage, scanProject } from "./code/project.mjs";
+import { readCodeFile } from "./code/files.mjs";
+import { review } from "./code/engine.mjs";
+import { detectLanguage } from "./code/languages.mjs";
+import { deleteSnippet, findSnippet, saveSnippet, snippetIndex } from "./snippets.mjs";
 
 const WEB_TARGETS = {
   github: (q) => (q ? `https://github.com/search?q=${encodeURIComponent(q)}` : "https://github.com"),
@@ -62,7 +67,17 @@ export function recentNotes(limit = 6) {
 }
 
 const HELP =
-  "Try “open edge”, “open word”, “open wps”, “open whatsapp”, “open camera”, “code”, “save note <text>”, “focus 25”, or “stats”.";
+  "Try “open edge”, “open word”, “code”, “check ~/project/main.py”, “scan ~/project”, “save snippet debounce: …”, “snippet debounce”, “add app Figma: C:\\…\\Figma.exe”, “save note <text>”, “focus 25”, or “stats”.";
+
+/** Strip quotes and a leading ~ so Windows and macOS paths are pasted as-is. */
+function cleanPath(raw) {
+  const text = String(raw ?? "").trim().replace(/^["']|["']$/g, "");
+  if (text === "~") return process.env.USERPROFILE ?? process.env.HOME ?? text;
+  if (text.startsWith("~/") || text.startsWith("~\\")) {
+    return path.join(process.env.USERPROFILE ?? process.env.HOME ?? "", text.slice(2));
+  }
+  return text;
+}
 
 function normaliseText(text) {
   return String(text ?? "").toLowerCase().replace(/\s+/g, " ").trim();
@@ -135,6 +150,107 @@ export async function handleCommand(rawInput) {
   if (/^(timer|remind me in)\b/.test(lower)) {
     const minutes = Number((lower.match(/(\d{1,3})/) ?? [])[1] ?? 5);
     return { ok: true, message: `Timer set for ${Math.min(Math.max(minutes, 1), 180)} minutes.`, ui: { timerMinutes: Math.min(Math.max(minutes, 1), 180) }, mood: "thinking" };
+  }
+
+  // ---- Code -------------------------------------------------------------
+  const checkMatch = text.match(/^(?:check|lint|review)\s+(.+)$/i);
+  if (checkMatch) {
+    const target = cleanPath(checkMatch[1]);
+    const file = readCodeFile(target);
+    if (!file.ok) return { ok: false, message: file.message, mood: "error" };
+
+    const result = review(file.code, file.language);
+    const errors = result.stats.errors;
+    const warnings = result.stats.warnings;
+    const top = result.issues.slice(0, 3).map((issue) => `line ${issue.line}: ${issue.title}`);
+    const summary = result.issues.length
+      ? `${file.name} scores ${result.score} — ${errors} error(s), ${warnings} warning(s). ${top.join(" · ")}`
+      : `${file.name} is clean. Score ${result.score}.`;
+    return {
+      ok: true,
+      message: summary,
+      ui: { tab: "code", openCode: { path: file.path, language: file.language, code: file.code } },
+      mood: errors ? "error" : "happy",
+    };
+  }
+
+  const scanMatch = text.match(/^(?:scan|audit)\s*(?:project|folder|repo|code)?\s*(.*)$/i);
+  if (scanMatch && !/^scan\s+(?:my|the)?\s*$/.test(text)) {
+    const rawTarget = cleanPath(scanMatch[1] ?? "");
+    const target = rawTarget || loadConfig().codeDir || process.cwd();
+    const result = scanProject(target);
+    return {
+      ok: result.ok,
+      message: scanMessage(result),
+      ui: result.ok ? { tab: "code", scan: result } : { tab: "code" },
+      mood: result.ok ? (result.summary.errors ? "error" : "happy") : "error",
+    };
+  }
+
+  // ---- Snippets ----------------------------------------------------------
+  const snippetSave = text.match(/^(?:save|add|new)\s+snippet\s+(?:called\s+)?([\w .+-]{1,60}?)\s*[:=]\s*([\s\S]+)$/i);
+  if (snippetSave) {
+    const saved = saveSnippet(snippetSave[1], snippetSave[2]);
+    return saved.ok
+      ? {
+          ok: true,
+          message: `${saved.replaced ? "Updated" : "Saved"} snippet “${saved.snippet.name}”. Say “snippet ${saved.snippet.name}” to copy it.`,
+          mood: "celebrate",
+        }
+      : { ok: false, message: saved.message, mood: "error" };
+  }
+
+  const snippetGet = text.match(/^(?:snippet|paste|copy snippet)\s+(.+)$/i);
+  if (snippetGet) {
+    const found = findSnippet(snippetGet[1]);
+    if (!found) {
+      const names = snippetIndex().map((entry) => entry.name);
+      return {
+        ok: false,
+        message: names.length ? `No snippet called “${snippetGet[1]}”. You have: ${names.slice(0, 5).join(", ")}.` : "You have no snippets yet. Try “save snippet debounce: …”.",
+        mood: "error",
+      };
+    }
+    return {
+      ok: true,
+      message: `“${found.name}” copied — ${found.code.split("\n").length} line(s).`,
+      ui: { copy: found.code },
+      mood: "celebrate",
+    };
+  }
+
+  if (/^(?:snippets|list snippets|my snippets)\b/i.test(lower)) {
+    const names = snippetIndex();
+    return {
+      ok: true,
+      message: names.length ? `You have ${names.length} snippet(s): ${names.map((entry) => entry.name).join(", ")}.` : "No snippets yet. Try “save snippet debounce: …”.",
+      mood: "happy",
+    };
+  }
+
+  const snippetDelete = text.match(/^(?:delete|remove)\s+snippet\s+(.+)$/i);
+  if (snippetDelete) {
+    const removed = deleteSnippet(snippetDelete[1]);
+    return removed.ok
+      ? { ok: true, message: `Deleted snippet “${removed.removed}”.`, mood: "happy" }
+      : { ok: false, message: removed.message, mood: "error" };
+  }
+
+  // ---- Custom apps -------------------------------------------------------
+  const addApp = text.match(/^add\s+(?:an?\s+)?app\s+([^:=]{1,40}?)\s*[:=]\s*(.+)$/i);
+  if (addApp) {
+    const result = addCustomApp(addApp[1], cleanPath(addApp[2]));
+    if (!result.ok) return { ok: false, message: result.message, mood: "error" };
+    saveConfig({ customApps: result.next });
+    return { ok: true, message: `Added “${result.app.name}”. Say “open ${result.app.name}”.`, mood: "celebrate" };
+  }
+
+  const removeApp = text.match(/^(?:remove|delete|forget)\s+(?:the\s+)?app\s+(.+)$/i);
+  if (removeApp) {
+    const result = removeCustomApp(removeApp[1]);
+    if (!result.ok) return { ok: false, message: result.message, mood: "error" };
+    saveConfig({ customApps: result.next });
+    return { ok: true, message: `Removed “${result.name}”.`, mood: "happy" };
   }
 
   // ---- Notes ------------------------------------------------------------

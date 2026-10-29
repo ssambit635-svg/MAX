@@ -91,6 +91,36 @@ attributes and CSS properties all get their own colour, in every supported langu
 (`~/Documents/MAX code`); existing files can be opened from anywhere, but system folders,
 hidden files and secret files are refused.
 
+### One file, or a whole folder
+
+- `check <path>` · `lint <path>` · `review <path>` — opens that file in the Code tab and lists its
+  issues. Plain `check` revisits what is already in the editor.
+- `scan` · `scan <path>` · `audit` — walks the folder (depth 6, 400 files max, 512 KB each, skips
+  `node_modules`, `.git` and dotfiles), scores it and lists the worst files first. In the Code tab
+  the same thing is the **Scan folder** button.
+- Clicking a row in the scan list loads that file straight into the editor.
+
+### Snippets
+
+Small fragments you reuse. Stored in `state/snippets.json` (`0600`), never sent anywhere.
+
+- `save snippet debounce: const d = (f, ms) => setTimeout(f, ms)` — saves or replaces by name
+- `snippet debounce` · `paste debounce` — puts it on the clipboard
+- `snippets` — lists the names
+- `delete snippet debounce`
+
+Lookup is exact, then prefix, then anywhere in the name, then anywhere in the code.
+
+## Apps of your own
+
+- `add app Figma: C:\Users\you\AppData\Local\Figma\Figma.exe` — adds a launcher
+- `open figma` — works from then on, and it appears in the Actions tab
+- `remove app Figma` — forgets it
+
+Built-in apps cannot be removed, only `exe`, `bat`, `cmd`, `lnk`, `app` and `sh` files are
+accepted, and anything inside `Windows`, `System32`, `SysWOW64` or `ProgramData` is refused
+outright.
+
 ## Focus
 
 - `focus` · `focus 25` · `pomodoro 50` — starts a block (1–180 minutes). The pet switches to
@@ -108,6 +138,12 @@ hidden files and secret files are refused.
 - `sleep` · `hide` — the island folds down and the pet naps
 - `wake` · `i'm back`
 - `what time is it`
+
+## Diagnostics
+
+Settings → **Copy a diagnostics report** builds a redacted text block (version, OS, preferences,
+counts, last failures) and copies it. Tokens, e-mail addresses and folder names are stripped first.
+Nothing is uploaded. See [`SECURITY.md`](SECURITY.md).
 
 Anything MAX does not recognise gets an honest answer plus the short help line — it never pretends to
 have understood.
