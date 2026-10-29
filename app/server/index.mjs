@@ -5,15 +5,18 @@ import { fileURLToPath } from "node:url";
 import { APP_ROOT, appendActivity, loadActivity, loadConfig, publicConfig, saveConfig } from "./store.mjs";
 import { appCatalog, handleCommand, recentNotes, saveNote } from "./commands.mjs";
 import { probeApps } from "./apps.mjs";
-import { collectStats, invalidateStats, verifyIntegration } from "./integrations.mjs";
+import { rejectForeignCaller } from "./origin.mjs";
+import { collectStats, invalidateStats, onStatsUpdated, verifyIntegration } from "./integrations.mjs";
 import { catalog as languageCatalog, detectLanguage, getLanguage } from "./code/languages.mjs";
 import { applyFixes, review } from "./code/engine.mjs";
 import { defaultWorkspace, listWorkspace, readCodeFile, writeCodeFile } from "./code/files.mjs";
 import { scanProject } from "./code/project.mjs";
 import { deleteSnippet, findSnippet, saveSnippet, snippetIndex } from "./snippets.mjs";
-import { clearLog, diagnosticsSummary, logEvent, readLog } from "./diagnostics.mjs";
+import { clearLog, diagnosticsSummary, logEvent, readLog, redact } from "./diagnostics.mjs";
 
-const DEFAULT_HOST = process.env.MAX_HOST ?? "0.0.0.0";
+// Loopback by default: an island on a café Wi-Fi must not be reachable from the
+// next table. Anything wider has to be asked for explicitly (a dev preview).
+const DEFAULT_HOST = process.env.MAX_HOST ?? "127.0.0.1";
 const DEFAULT_PORT = Number(process.env.MAX_API_PORT ?? process.env.PORT ?? 7999);
 const DIST = process.env.MAX_DIST_DIR ?? path.join(APP_ROOT, "dist");
 const ASSETS = process.env.MAX_ASSETS_DIR ?? path.join(APP_ROOT, "assets");
@@ -45,6 +48,9 @@ function sendJson(res, status, payload) {
   res.end(body);
 }
 
+// Numbers that finish loading after the island has already drawn arrive here.
+onStatsUpdated((stats) => broadcast("stats", { stats }));
+
 function broadcast(event, payload) {
   const frame = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
   for (const client of clients) {
@@ -56,20 +62,42 @@ function broadcast(event, payload) {
   }
 }
 
+const MAX_BODY_BYTES = Number(process.env.MAX_MAX_BODY ?? 2_000_000);
+
+/** A bad request is the caller's mistake, so it must not look like a crash. */
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function readBody(req) {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 1_000_000) throw new Error("Request body too large");
+    if (size > MAX_BODY_BYTES) {
+      // Stop buffering, but answer before dropping the socket: destroying it first
+      // turns a clear "too big" into a bare network error on the other side.
+      req.pause();
+      const error = new HttpError(413, "That's too much data for one request.");
+      error.closeConnection = true;
+      throw error;
+    }
     chunks.push(chunk);
   }
   if (!chunks.length) return {};
+  let parsed;
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
-    throw new Error("Invalid JSON body");
+    throw new HttpError(400, "That request wasn't valid JSON.");
   }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new HttpError(400, "Expected a JSON object.");
+  }
+  return parsed;
 }
 
 function serveFile(res, file) {
@@ -201,6 +229,17 @@ async function handleApi(req, res, url) {
     });
   }
 
+  if (route === "POST /api/diagnostics/report" && req.method === "POST") {
+    // A panel crashed in the renderer. The message is redacted before it is
+    // written, because it can quote a path or a token from a stack trace.
+    const body = await readBody(req);
+    const message = typeof body?.message === "string" ? body.message.slice(0, 300) : "";
+    const detail = typeof body?.detail === "string" ? body.detail.slice(0, 1200) : "";
+    if (!message) return sendJson(res, 400, { ok: false, message: "Nothing to report." });
+    logEvent("error", `panel failed: ${redact(message)}`, { detail: redact(detail) });
+    return sendJson(res, 200, { ok: true });
+  }
+
   if (route === "POST /api/diagnostics/clear" && req.method === "POST") {
     return sendJson(res, 200, { ok: clearLog(), message: clearLog() ? "Log cleared." : "Nothing to clear." });
   }
@@ -237,9 +276,16 @@ async function handleApi(req, res, url) {
 
   if (route === "POST /api/notes") {
     const body = await readBody(req);
+    if (body?.text !== undefined && typeof body.text !== "string") {
+      return sendJson(res, 400, { ok: false, message: "A note has to be text." });
+    }
     const text = String(body?.text ?? "").trim();
     if (!text) return sendJson(res, 400, { ok: false, message: "There is nothing to save yet." });
+    if (text.length > 200_000) {
+      return sendJson(res, 413, { ok: false, message: "That note is too long — keep it under 200,000 characters." });
+    }
     const saved = saveNote(text, body?.name ? String(body.name) : undefined);
+    if (!saved.ok) return sendJson(res, 200, { ok: false, message: saved.message, mood: "error" });
     const entry = appendActivity({ kind: "note", title: `Saved ${saved.name}`, detail: text.slice(0, 120) });
     broadcast("activity", { activity: entry });
     broadcast("notes", { notes: recentNotes() });
@@ -290,6 +336,13 @@ async function handleApi(req, res, url) {
 async function requestHandler(req, res) {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   try {
+    // Before any route: is this really the island talking to itself?
+    const foreign = rejectForeignCaller(req, { port: Number(process.env.MAX_API_PORT) || boundPort || undefined });
+    if (foreign) {
+      sendJson(res, 403, { ok: false, message: foreign });
+      return undefined;
+    }
+
     if (url.pathname.startsWith("/api/")) {
       await handleApi(req, res, url);
       return;
@@ -305,6 +358,18 @@ async function requestHandler(req, res) {
 
     return serveFile(res, path.join(DIST, "index.html"));
   } catch (error) {
+    // A rejection the caller caused is not a crash: report it as a plain sentence.
+    if (error instanceof HttpError) {
+      if (!res.headersSent) {
+        if (error.closeConnection) res.setHeader("connection", "close");
+        sendJson(res, error.status, { ok: false, message: error.message });
+      } else {
+        res.end();
+      }
+      // A half-read body would keep the parser waiting forever.
+      if (error.closeConnection) setImmediate(() => req.destroy?.());
+      return undefined;
+    }
     console.error("[max] request failed", error);
     // Never leak a stack trace or an internal message to the island.
     if (!res.headersSent) sendJson(res, 500, { ok: false, message: "Something went wrong on my side. Try that again." });
@@ -317,6 +382,8 @@ async function requestHandler(req, res) {
  * Starts the local service. Resolves with the server instance and the port it actually
  * bound, so the desktop shell can move on to the next port when one is already taken.
  */
+let boundPort = 0;
+
 export function startServer({ port = DEFAULT_PORT, host = DEFAULT_HOST } = {}) {
   return new Promise((resolve, reject) => {
     const server = http.createServer(requestHandler);
@@ -327,10 +394,14 @@ export function startServer({ port = DEFAULT_PORT, host = DEFAULT_HOST } = {}) {
     const onListening = () => {
       server.removeListener("error", onError);
       server.on("error", (error) => console.error(`[max] service error: ${error.message}`));
-      console.log(`[max] island server on http://${host}:${port}`);
+      // Report the port the OS actually gave us, so port 0 (tests, a busy 7999) works.
+      const bound = server.address();
+      const actualPort = typeof bound === "object" && bound ? bound.port : port;
+      console.log(`[max] island server on http://${host}:${actualPort}`);
       console.log(`[max] ui: ${DIST}`);
       console.log(`[max] notes: ${loadConfig().saveDir}`);
-      resolve({ server, port, close: () => new Promise((done) => server.close(done)) });
+      boundPort = actualPort;
+      resolve({ server, port: actualPort, close: () => new Promise((done) => server.close(done)) });
     };
     server.once("error", onError);
     server.once("listening", onListening);

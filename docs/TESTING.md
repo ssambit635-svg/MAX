@@ -17,13 +17,29 @@ npm install
 npm test
 ```
 
-**Expect** — `99` lines starting with `PASS`, ending with `the tools behave`, exit code 0.
-The five suites are integrations (10), apps (21), code engine (40), highlight (7), codebase (7),
-tools (14). `SKIP esbuild unavailable` on the highlight suite means you ran files before
-`npm install` — rerun it.
+**Expect** — `168` lines starting with `PASS`, ending with `the app survives the gauntlet`, exit code 0.
+The seven suites are integrations (10), apps (21), code engine (40), highlight (7), codebase (10),
+tools (14), and the production gauntlet (66). `SKIP esbuild unavailable` on the highlight suite means
+you ran files before `npm install` — rerun it.
+
+**The three commands that matter**
+
+| Command | What it proves | Time |
+| --- | --- | --- |
+| `npm run qa` | typecheck, a real UI build, and all 66 hostile checks | ~35 s |
+| `npm run qa:fast` | the 66 checks without the build (skips tsc and vite) | ~8 s |
+| `npm run qa:loop` | the same battery on every save while you work | watching |
+
+A failing check prints the file, the input and what actually happened, so the fix is
+usually one line. The gauntlet keeps its own scratch folder and never writes to your
+Documents.
 
 **Do** — `npm run desktop` (builds the UI and opens the real app), or for a quick look at the UI
 only: `npm start` then open `http://127.0.0.1:7999`.
+
+To look at the UI through a proxy or from another device, the service has to be told
+it is allowed: `MAX_HOST=0.0.0.0 MAX_TRUSTED_HOSTS=the-proxy-host npm start`. Without
+those two variables MAX only answers on loopback, and only for itself.
 
 **Expect** — the small island at the top of the screen, pet breathing, click it and it opens
 slowly with a spring settle.

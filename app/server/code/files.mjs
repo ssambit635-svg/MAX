@@ -10,26 +10,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { detectLanguage, LANGUAGES } from "./languages.mjs";
+import { blockedReason } from "../paths.mjs";
 
 export const MAX_BYTES = 512 * 1024;
 const EXTENSIONS = new Set(LANGUAGES.flatMap((language) => language.extensions));
-
-const BLOCKED_DIRS = [
-  "windows",
-  "system32",
-  "syswow64",
-  "program files",
-  "program files (x86)",
-  "programdata",
-  "node_modules",
-  ".git",
-  ".ssh",
-  ".gnupg",
-  "library",
-  "applications",
-];
-
-const BLOCKED_FILES = /(^|\/)(\.env|\.npmrc|\.netrc|id_rsa|id_ed25519|\.git-credentials|credentials|\.bash_history)$/i;
 
 export const defaultWorkspace = () => path.join(os.homedir(), "Documents", "MAX code");
 
@@ -41,18 +25,6 @@ function isInside(parent, child) {
 /** Public form of the guard, for callers that read a folder rather than a file. */
 export function isBlockedPath(target) {
   return Boolean(blockedReason(path.resolve(String(target ?? ""))));
-}
-
-/** The raw reason, when a caller wants to show it. */
-function blockedReason(target) {
-  const normalised = target.replace(/\\/g, "/").toLowerCase();
-  const segments = normalised.split("/").filter(Boolean);
-  if (segments.some((segment) => BLOCKED_DIRS.includes(segment))) return "That folder belongs to the system, so I won't touch it.";
-  if (BLOCKED_FILES.test(normalised)) return "That looks like a secrets file, so I won't open it.";
-  if (segments.some((segment) => segment.startsWith(".") && segment.length > 1 && segment !== "..")) {
-    return "Hidden files are off limits.";
-  }
-  return null;
 }
 
 const size = (file) => fs.statSync(file).size;

@@ -4,6 +4,7 @@ import type { StatePayload } from "./types";
 interface LiveHandlers {
   onActivity: (activity: StatePayload["activity"]) => void;
   onNotes: (notes: StatePayload["notes"]) => void;
+  onStats?: (stats: StatePayload["stats"]) => void;
 }
 
 /**
@@ -13,9 +14,9 @@ interface LiveHandlers {
  * Reconnects with a growing backoff, and exposes whether the stream is currently
  * up so callers can fall back to local updates while it is down.
  */
-export function useLiveStream({ onActivity, onNotes }: LiveHandlers) {
+export function useLiveStream({ onActivity, onNotes, onStats }: LiveHandlers) {
   const alive = useRef(false);
-  const handlers = useRef({ onActivity, onNotes });
+  const handlers = useRef<LiveHandlers>({ onActivity, onNotes, onStats });
   handlers.current = { onActivity, onNotes };
 
   useEffect(() => {
@@ -46,6 +47,16 @@ export function useLiveStream({ onActivity, onNotes }: LiveHandlers) {
         try {
           const payload = JSON.parse((event as MessageEvent).data) as { notes: StatePayload["notes"] };
           handlers.current.onNotes(payload.notes);
+        } catch {
+          /* ignore */
+        }
+      });
+
+      // Numbers that were still loading when the island first drew arrive here.
+      source.addEventListener("stats", (event) => {
+        try {
+          const payload = JSON.parse((event as MessageEvent).data) as { stats: StatePayload["stats"] };
+          handlers.current.onStats?.(payload.stats);
         } catch {
           /* ignore */
         }

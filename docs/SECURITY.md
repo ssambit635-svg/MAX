@@ -14,6 +14,30 @@ explicit about what it can do, what it refuses to do, and what leaves the machin
 - **The server listens on loopback only** by default and is bound to a random-ish
   port range starting at 47199 in the desktop build.
 
+## Why another page cannot drive the island
+
+Listening on `127.0.0.1` is not privacy: every page in your browser can reach a local
+port, and a hostile domain can point its own name at loopback (DNS rebinding). So each
+request is checked before any route runs (`server/origin.mjs`):
+
+- the `Host` header must be a loopback name (`127.0.0.1`, `localhost`, `[::1]`) and, when
+  it carries a port, that port must be the one MAX is actually serving;
+- a request that carries an `Origin` must come from the island itself (or be `null`,
+  which is a native client, not a web page);
+- anything else gets `403` with a sentence, and nothing is executed.
+
+Widening this is opt-in: `MAX_HOST` changes the bind address and `MAX_TRUSTED_HOSTS`
+lists extra hostnames (`*` trusts any). Both are for development; the packaged app
+sets neither.
+
+## Folders MAX refuses
+
+Notes, code and scans share one guard (`server/paths.mjs`). A folder the operating
+system owns — `Windows`, `System32`, `Program Files`, `/etc`, `/usr`, `/bin`,
+`/private`, `/proc`, `/sys`, `Applications`, `Library` — is refused before anything is
+written, with a sentence rather than a permission error. Hidden folders, `.ssh`,
+`.git`, `node_modules` and secrets files are refused too.
+
 ## What MAX can do
 
 | Capability | Boundary |

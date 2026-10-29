@@ -68,6 +68,9 @@ jobs:
       - name: Snippets, project scan and diagnostics
         run: npm run test:tools
 
+      - name: Production gauntlet (hostile input, bad requests, corrupt state)
+        run: npm run test:production
+
       - name: Smoke-test the local service
         run: |
           node server/index.mjs &
@@ -139,22 +142,119 @@ jobs:
           test -n "$(ls release/*.exe 2>/dev/null)" || { echo "::error::no installer produced"; exit 1; }
 
       # Roadmap item: prove the installer actually installs, not just builds.
+      # Every branch reports through an annotation, so a failure is readable from
+      # the API even when the raw log is not reachable.
       - name: Install silently and check the installed layout
         shell: pwsh
         run: |
-          $installer = Get-ChildItem release/*.exe | Where-Object { $_.Name -notmatch 'portable' } | Select-Object -First 1
-          if (-not $installer) { Write-Error "no NSIS installer found"; exit 1 }
-          Write-Host "installing $($installer.Name)"
-          Start-Process -FilePath $installer.FullName -ArgumentList '/S', '/currentuser' -Wait
-          $root = Join-Path $env:LOCALAPPDATA 'Programs\MAX'
-          if (-not (Test-Path (Join-Path $root 'MAX.exe'))) { Write-Error "MAX.exe missing after install"; exit 1 }
-          if (-not (Test-Path (Join-Path $root 'resources\app.asar'))) { Write-Error "app.asar missing"; exit 1 }
-          $server = Join-Path $root 'resources\app.asar.unpacked\server\index.mjs'
-          if (-not (Test-Path $server)) { Write-Error "unpacked server missing"; exit 1 }
-          $size = (Get-ChildItem $root -Recurse | Measure-Object Length -Sum).Sum / 1MB
-          Write-Host ("installed size: {0:N1} MB" -f $size)
-          Write-Host "install layout OK"
+          function Say($level, $message) { Write-Host "::$level::$message" }
 
+          $installer = Get-ChildItem release/*.exe | Where-Object { $_.Name -notmatch 'portable' } | Select-Object -First 1
+          if (-not $installer) { Say error "no NSIS installer in release/"; exit 1 }
+          Say notice ("installer {0} {1:N1} MB" -f $installer.Name, ($installer.Length / 1MB))
+
+          # A 79 MB NSIS installer occasionally dies with an access violation on a
+          # fresh runner while Defender is still scanning it. That is the runner,
+          # not the build, so the install is attempted twice before failing.
+          $exit = 'unknown'
+          for ($attempt = 1; $attempt -le 2; $attempt++) {
+            try {
+              $proc = Start-Process -FilePath $installer.FullName -ArgumentList '/S', '/currentuser' -PassThru
+              $proc.WaitForExit(300000) | Out-Null
+              $exit = $proc.ExitCode
+            } catch {
+              Say warning "launching the installer threw: $($_.Exception.Message)"
+              $exit = 'threw'
+            }
+            Say notice "installer attempt ${attempt} exit code: $exit"
+            if ($exit -eq 0) { break }
+            if (Test-Path (Join-Path (Join-Path $env:LOCALAPPDATA 'Programs\MAX') 'MAX.exe')) { break }
+            Start-Sleep -Seconds 10
+          }
+
+          # Ask Windows where it went; guessing the path is how this check lied before.
+          $locations = @()
+          foreach ($hive in 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall') {
+            $entries = Get-ChildItem $hive -ErrorAction SilentlyContinue |
+              Get-ItemProperty -ErrorAction SilentlyContinue |
+              Where-Object { $_.DisplayName -like 'MAX*' }
+            foreach ($entry in $entries) {
+              Say notice "registry: $($entry.DisplayName) -> $($entry.InstallLocation)"
+              if ($entry.InstallLocation) { $locations += $entry.InstallLocation.Trim('"') }
+            }
+          }
+
+          $fallbacks = @(
+            (Join-Path $env:LOCALAPPDATA 'Programs\MAX'),
+            (Join-Path $env:LOCALAPPDATA 'Programs\max'),
+            (Join-Path $env:ProgramFiles 'MAX')
+          )
+          foreach ($path in $fallbacks) { $locations += $path }
+
+          $root = $null
+          for ($i = 0; $i -lt 20 -and -not $root; $i++) {
+            $root = $locations | Where-Object { $_ -and (Test-Path (Join-Path $_ 'MAX.exe')) } | Select-Object -First 1
+            if (-not $root) { Start-Sleep -Seconds 2 }
+          }
+
+          if (-not $root) {
+            foreach ($path in $locations) { Say warning "not here: $path exists=$(Test-Path $path)" }
+            $apps = (Get-ChildItem $env:LOCALAPPDATA -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) -join ', '
+            Say error "MAX.exe was not found after install (localappdata dirs: $apps)"
+            exit 1
+          }
+
+          Say notice "installed to $root"
+          Say notice ("top level: " + ((Get-ChildItem $root | ForEach-Object { $_.Name }) -join ', '))
+
+          $asar = Join-Path $root 'resources\app.asar'
+          if (-not (Test-Path $asar)) { Say error "app.asar missing in $root"; exit 1 }
+          Say notice ("app.asar {0:N1} MB" -f ((Get-Item $asar).Length / 1MB))
+
+          # The local service is unpacked outside the archive, or the app cannot start.
+          $server = Join-Path $root 'resources\app.asar.unpacked\server\index.mjs'
+          if (-not (Test-Path $server)) {
+            $listing = (Get-ChildItem (Join-Path $root 'resources') -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 25 | ForEach-Object { $_.FullName }) -join ' | '
+            Say error "unpacked server missing. resources: $listing"
+            exit 1
+          }
+
+          $size = (Get-ChildItem $root -Recurse | Measure-Object Length -Sum).Sum / 1MB
+          Say notice ("install layout OK - {0:N1} MB, exe + asar + unpacked service all present" -f $size)
+
+      # The install check proves the files are there. This proves they run.
+      - name: Launch the installed app and talk to it
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\MAX\MAX.exe'
+          if (-not (Test-Path $exe)) { Write-Host "::error::MAX.exe missing, cannot boot it"; exit 1 }
+          $env:MAX_API_PORT = '47311'
+          $proc = Start-Process -FilePath $exe -PassThru
+          $health = $null
+          for ($i = 0; $i -lt 60; $i++) {
+            Start-Sleep -Milliseconds 500
+            try {
+              $health = Invoke-WebRequest -Uri 'http://127.0.0.1:47311/api/health' -UseBasicParsing -TimeoutSec 2
+              if ($health.StatusCode -eq 200) { break }
+            } catch { $health = $null }
+            if ($proc.HasExited) { break }
+          }
+          if (-not $health -or $health.StatusCode -ne 200) {
+            Write-Host "::error::the installed app never answered on /api/health (exit code: $($proc.ExitCode))"
+            Get-Process MAX -ErrorAction SilentlyContinue | Stop-Process -Force
+            exit 1
+          }
+          Write-Host "::notice::installed app booted and served $($health.Content)"
+          $state = Invoke-WebRequest -Uri 'http://127.0.0.1:47311/api/state' -UseBasicParsing -TimeoutSec 15
+          if ($state.Content -notmatch '"config"' -or $state.Content -notmatch '"stats"') {
+            Write-Host "::error::/api/state is missing config or stats"
+            exit 1
+          }
+          $page = Invoke-WebRequest -Uri 'http://127.0.0.1:47311/' -UseBasicParsing -TimeoutSec 10
+          if ($page.StatusCode -ne 200) { Write-Host "::error::the island UI did not load ($($page.StatusCode))"; exit 1 }
+          Write-Host "::notice::ui loaded, $(($state.Content.Length / 1KB)) KB of state, app still alive: $(-not $proc.HasExited)"
+          Get-Process MAX -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 2
       - name: Check the updater feed was produced
         shell: bash
         run: |
@@ -165,9 +265,25 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          $uninstaller = Join-Path $env:LOCALAPPDATA 'Programs\MAX\Uninstall MAX.exe'
-          if (Test-Path $uninstaller) { Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait }
-          else { Write-Host "no uninstaller found - nothing to clean" }
+          $roots = @((Join-Path $env:LOCALAPPDATA 'Programs\MAX'), (Join-Path $env:LOCALAPPDATA 'Programs\max'), (Join-Path $env:ProgramFiles 'MAX'))
+          foreach ($hive in 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall') {
+            Get-ChildItem $hive -ErrorAction SilentlyContinue | Get-ItemProperty -ErrorAction SilentlyContinue |
+              Where-Object { $_.DisplayName -like 'MAX*' -and $_.InstallLocation } |
+              ForEach-Object { $roots += $_.InstallLocation.Trim('"') }
+          }
+          $roots = $roots | Where-Object { $_ } | Select-Object -Unique
+          $found = $false
+          foreach ($root in $roots) {
+            $uninstaller = Join-Path $root 'Uninstall MAX.exe'
+            if (Test-Path $uninstaller) {
+              Write-Host "uninstalling from $root"
+              Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait
+              $found = $true
+            }
+          }
+          Get-Process MAX -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 1
+          if (-not $found) { Write-Host "no uninstaller found - nothing to clean" }
 
       - name: Show log on failure
         if: failure()

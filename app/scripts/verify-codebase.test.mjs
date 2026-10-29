@@ -9,6 +9,10 @@
  *   4. every allowlisted app is launchable on at least one platform
  *   5. version numbers agree across package.json, the lockfile and the UI
  *   6. no console.log left in the renderer
+ *   7. every API route the UI calls exists on the server
+ *   8. the window is only resized when the island says so
+ *   9. the panel starts folded and only opens through its own state
+ *  10. every function the backend calls is actually defined
  *
  * Each check prints what it found, so the fix is obvious.
  */
@@ -20,8 +24,8 @@ const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SKIP_DIRS = new Set(["node_modules", "dist", "release", ".max", "assets"]);
 
 let failures = 0;
-function check(name, run) {
-  const problems = run() ?? [];
+async function check(name, run) {
+  const problems = (await run()) ?? [];
   if (!problems.length) {
     console.log(`PASS  ${name}`);
     return;
@@ -218,6 +222,45 @@ check("the panel starts folded and only opens through its own state", () => {
   }
   if (/\.island\[data-expanded="true"\] \.pill \{\s*display: none/.test(css)) {
     problems.push("the pill must fold, not vanish (display:none makes the open snap)");
+  }
+  return problems;
+});
+
+
+/* ------------------------------------------------ 9. dangling calls -- */
+
+// The 0.4.1 crash: a helper was renamed and one call site kept the old name, so
+// dragging threw "cancelTween is not defined" inside the main process. Syntax
+// checks cannot see that, and the app is only tested by hand — so parse the
+// backend and main process and prove every called function exists.
+check("every function the backend calls is defined", async () => {
+  const { parse } = await import("@babel/parser");
+  const traverseModule = await import("@babel/traverse");
+  // CJS default-of-default, depending on how the loader unwraps it.
+  const traverse = traverseModule.default?.default ?? traverseModule.default ?? traverseModule;
+
+  const roots = ["electron", "server"];
+  const walk = (dir) =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) return entry.name === "node_modules" ? [] : walk(full);
+      return full.endsWith(".mjs") ? [full] : [];
+    });
+
+  const problems = [];
+  for (const root of roots) {
+    for (const file of walk(path.join(APP, root))) {
+      const ast = parse(read(file), { sourceType: "module", errorRecovery: true });
+      traverse(ast, {
+        CallExpression(nodePath) {
+          const callee = nodePath.node.callee;
+          if (callee.type !== "Identifier" || callee.name === "import") return;
+          if (nodePath.scope.hasBinding(callee.name, true)) return;
+          if (callee.name in globalThis) return;
+          problems.push(`${path.relative(APP, file)}:${nodePath.node.loc.start.line} calls ${callee.name}(), which does not exist`);
+        },
+      });
+    }
   }
   return problems;
 });

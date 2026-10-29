@@ -267,7 +267,9 @@ const BLOCKED_CUSTOM = /(^|[\\/])(windows|system32|syswow64|programdata)([\\/]|$
 export function customApps(configured = readConfiguredApps()) {
   return (configured ?? [])
     .filter((entry) => entry && typeof entry.name === "string" && typeof entry.path === "string")
-    .filter((entry) => /\.(exe|bat|cmd|lnk|app|sh)$/i.test(entry.path) || process.platform !== "win32")
+    // Keep anything that still looks launchable here: a known program extension,
+    // or a file that exists (macOS/Linux binaries usually have no extension).
+    .filter((entry) => /\.(exe|bat|cmd|lnk|com|msc|app|sh|command)$/i.test(entry.path) || (fs.existsSync(entry.path) && (isWin || isExecutable(entry.path))))
     .filter((entry) => !BLOCKED_CUSTOM.test(entry.path))
     .slice(0, 40)
     .map((entry) => {
@@ -284,6 +286,16 @@ export function customApps(configured = readConfiguredApps()) {
         linux: entry.path,
       };
     });
+}
+
+/** POSIX permissions say whether something can be run. */
+function isExecutable(target) {
+  try {
+    fs.accessSync(target, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Forget one of the user's own launchers. Built-ins cannot be removed. */
@@ -316,7 +328,13 @@ function readConfiguredApps() {
 
 /** @returns {{ok:true, app}|{ok:false, message:string}} */
 export function addCustomApp(name, target) {
-  const cleanName = String(name ?? "").trim().slice(0, 40);
+  // A name is a label people type back at MAX, never part of a command line — but
+  // keeping shell punctuation out of it means it can never look like one either.
+  const cleanName = String(name ?? "")
+    .replace(/[\\/`$;|&<>()[\]{}"']/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 40);
   const rawPath = String(target ?? "").trim().replace(/^"|"$/g, "");
   if (!cleanName) return { ok: false, message: "Give the app a name, like “Figma”." };
   if (!rawPath) return { ok: false, message: "Paste the app's full path after the name." };
@@ -326,8 +344,16 @@ export function addCustomApp(name, target) {
   if (!fs.existsSync(resolved)) return { ok: false, message: "That path doesn't exist on this machine." };
   const stat = fs.statSync(resolved);
   if (!stat.isFile()) return { ok: false, message: "Point me at the app's .exe file, not a folder." };
-  if (stat.size > 0 && !/\.(exe|bat|cmd|lnk|app|sh)$/i.test(resolved)) {
-    return { ok: false, message: "That file doesn't look like a program." };
+
+  // On Windows a program is always an .exe/.bat/.lnk. On macOS and Linux most
+  // programs have no extension at all (`/usr/bin/code`), so the test is "is it
+  // executable", not "does it end in .exe".
+  if (isWin) {
+    if (stat.size > 0 && !/\.(exe|bat|cmd|lnk|com|msc)$/i.test(resolved)) {
+      return { ok: false, message: "That file doesn't look like a program." };
+    }
+  } else if (stat.size > 0 && !/\.(sh|command|app)$/i.test(resolved) && !isExecutable(resolved)) {
+    return { ok: false, message: "That file isn't executable, so it isn't a program." };
   }
 
   const existing = customApps();

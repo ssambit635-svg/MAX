@@ -31,6 +31,8 @@ const write = (relative, text) => {
   const target = path.join(sandbox, relative);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, text);
+  // On macOS and Linux a program is a file with the execute bit, not a suffix.
+  if (process.platform !== "win32") fs.chmodSync(target, 0o755);
   return target;
 };
 
@@ -114,7 +116,9 @@ await check("a real executable path is accepted", () => {
 
 await check("system folders and non-programs are refused", () => {
   assert(!apps.addCustomApp("Bad", "C:\\Windows\\System32\\cmd.exe").ok, "system32 accepted");
-  assert(!apps.addCustomApp("Bad", write("notes.md", "hi")).ok, "text file accepted");
+  const notExecutable = write("notes.md", "hi");
+  if (process.platform !== "win32") fs.chmodSync(notExecutable, 0o644);
+  assert(!apps.addCustomApp("Bad", notExecutable).ok, "a non-executable file was accepted");
   assert(!apps.addCustomApp("Bad", path.join(sandbox, "missing.exe")).ok, "missing file accepted");
   assert(!apps.addCustomApp("Notepad", write("bin/notepad.exe", "MZ")).ok, "built-in collision accepted");
   assert(isBlockedPath("C:\\Windows\\System32\\cmd.exe"), "blocked-path helper disagreed");

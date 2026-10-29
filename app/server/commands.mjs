@@ -1,5 +1,7 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { blockedReason } from "./paths.mjs";
 import { loadConfig, saveConfig } from "./store.mjs";
 import { APPS, addCustomApp, appCatalog, closeApp, findApp, launchApp, openUrl, removeCustomApp } from "./apps.mjs";
 import { scanMessage, scanProject } from "./code/project.mjs";
@@ -32,8 +34,15 @@ function slugify(text) {
 
 export function saveNote(text, name) {
   const config = loadConfig();
-  const dir = config.saveDir || path.join(process.env.HOME ?? process.cwd(), "MAX", "notes");
-  fs.mkdirSync(dir, { recursive: true });
+  const dir = config.saveDir || path.join(os.homedir(), "Documents", "MAX notes");
+  // A folder that belongs to the OS is refused, with words rather than EACCES.
+  const blocked = blockedReason(dir);
+  if (blocked) return { ok: false, message: `${blocked} Pick another notes folder in Settings.` };
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {
+    return { ok: false, message: `I can't create “${dir}”. Choose a folder you can write to.` };
+  }
   const now = new Date();
   const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
   const base = `${stamp}-${slugify(name || text.split("\n")[0] || "note")}`;
@@ -43,8 +52,12 @@ export function saveNote(text, name) {
     file = path.join(dir, `${base}-${counter++}.md`);
   }
   const body = `# ${name || "Quick note"}\n\n_Saved by MAX · ${now.toLocaleString()}_\n\n${text.trim()}\n`;
-  fs.writeFileSync(file, body, "utf8");
-  return { file, dir, name: path.basename(file) };
+  try {
+    fs.writeFileSync(file, body, "utf8");
+  } catch {
+    return { ok: false, message: `I couldn't write to “${dir}”. Check that the folder still exists and is writable.` };
+  }
+  return { ok: true, file, dir, name: path.basename(file) };
 }
 
 export function recentNotes(limit = 6) {
@@ -262,6 +275,7 @@ export async function handleCommand(rawInput) {
     }
     const named = body.match(/^["']?([^":]{2,40})["']?\s*:\s*(.+)$/);
     const saved = saveNote(named ? named[2] : body, named ? named[1] : undefined);
+    if (!saved.ok) return { ok: false, message: saved.message, mood: "error" };
     return { ok: true, message: `Saved as ${saved.name}.`, ui: { savedNote: saved }, mood: "celebrate" };
   }
   if (/^save (?:this )?file$/i.test(text) || /^new note$/i.test(text)) {

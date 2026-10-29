@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkForUpdates, initUpdater, installUpdate, stopUpdater, updateStatus } from "./updater.mjs";
+import { clampToScreen, cleanWindowState, COLLAPSED, computeBounds, isOffScreen } from "./bounds.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -12,14 +13,11 @@ const PREFERRED_PORT = Number(process.env.MAX_API_PORT ?? 47199);
 const PORT_SEARCH_RANGE = 12;
 let BASE_URL = `http://127.0.0.1:${PREFERRED_PORT}`;
 
-// The window is a transparent frame that hugs the island: 396px island + 6px of
-// shadow room on each side, and 56px pill + 6px top/bottom.
-const COLLAPSED = { width: 408, height: 64 };
-const EXPANDED = { width: 868, height: 760 };
+// Window sizes and placement live in ./bounds.mjs so they can be tested off-device.
 // When folding, the panel fades, then the island folds, and only then does the
 // frame shrink. A frame that snaps shut under a still-open panel is exactly what
 // made it look stuck before.
-const COLLAPSE_DELAY_MS = 560;
+const COLLAPSE_DELAY_MS = 470;
 
 let win = null;
 let tray = null;
@@ -30,11 +28,33 @@ let serverStarted = false;
 let startupFailure = null;
 let dragOrigin = null;
 
+/** The only hosts the island links to, checked again in the shell. */
+const TRUSTED_LINK_HOSTS = new Set(["github.com", "www.github.com", "leetcode.com", "www.leetcode.com", "render.com", "dashboard.render.com"]);
+
+/** One gate for every way out of the island: the bridge, new windows, navigation. */
+function openTrustedUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(String(url));
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+  if (!TRUSTED_LINK_HOSTS.has(parsed.hostname)) return false;
+  void shell.openExternal(parsed.href);
+  return true;
+}
+
 const stateFile = () => path.join(app.getPath("userData"), "window.json");
 
+/**
+ * window.json is written while the app runs, so a crash can leave half a file
+ * behind. cleanWindowState turns whatever survived into numbers that can place
+ * a window — a `null` here used to stop the island from opening at all.
+ */
 function readWindowState() {
   try {
-    return JSON.parse(fs.readFileSync(stateFile(), "utf8"));
+    return cleanWindowState(JSON.parse(fs.readFileSync(stateFile(), "utf8")));
   } catch {
     return {};
   }
@@ -62,19 +82,12 @@ function workAreaFor(point) {
 let pendingResize = null;
 
 function boundsFor(mode, islandHeight) {
-  const base = mode === "expanded" ? EXPANDED : COLLAPSED;
-  // The renderer measures the island, so the frame hugs it instead of leaving a
-  // transparent strip that would still eat clicks.
-  const size = islandHeight ? { ...base, height: Math.max(COLLAPSED.height, islandHeight + 12) } : base;
-  const bounds = win.getBounds();
-  const area = workAreaFor({ x: bounds.x + bounds.width / 2, y: bounds.y + 10 });
-  const width = Math.min(size.width, area.width - 20);
-  const height = Math.min(size.height, area.height - 20);
+  const current = win.getBounds();
+  const area = workAreaFor({ x: current.x + current.width / 2, y: current.y + 10 });
   const saved = readWindowState();
-  const centerX = saved.x ?? bounds.x + bounds.width / 2;
-  const x = Math.round(Math.min(Math.max(area.x + 8, centerX - width / 2), area.x + area.width - width - 8));
-  const top = Math.round(Math.max(area.y + 6, Math.min(saved.y ?? area.y + 8, area.y + area.height - height - 6)));
-  return { x, y: top, width, height };
+  // A monitor that is no longer attached must not drag the island off-screen.
+  const anchor = isOffScreen(saved, area) ? {} : saved;
+  return computeBounds({ mode, area, current, saved: anchor, islandHeight });
 }
 
 /** Frameless windows ignore some resizes while marked non-resizable; this borrows
@@ -204,10 +217,13 @@ function loadErrorPage(title, detail) {
 function createWindow() {
   const saved = readWindowState();
   const area = workAreaFor();
-  const width = COLLAPSED.width;
-  const height = COLLAPSED.height;
-  const x = Math.round(Math.min(Math.max(area.x + 8, (saved.x ?? area.x + area.width / 2) - width / 2), area.x + area.width - width - 8));
-  const y = Math.round(Math.max(area.y + 6, saved.y ?? area.y + 8));
+  const start = computeBounds({
+    mode: "collapsed",
+    area,
+    current: { x: area.x + area.width / 2, y: area.y, width: COLLAPSED.width, height: COLLAPSED.height },
+    saved: isOffScreen(saved, area) ? {} : saved,
+  });
+  const { x, y, width, height } = start;
 
   win = new BrowserWindow({
     width,
@@ -251,20 +267,37 @@ function createWindow() {
     win = null;
   });
 
+  // A GPU driver reset or an out-of-memory renderer must not leave a blank,
+  // always-on-top window: reload once, and give up quietly if it keeps happening.
+  let recoveries = [];
+  const recover = (reason) => {
+    const now = Date.now();
+    recoveries = recoveries.filter((at) => now - at < 60_000);
+    recoveries.push(now);
+    if (recoveries.length > 3) return; // a genuinely broken machine: stay put
+    console.warn(`[max] reloading the island after ${reason}`);
+    if (!startupFailure) win?.loadURL(`${BASE_URL}/?shell=desktop`);
+  };
+  win.webContents.on("render-process-gone", (_event, details) => {
+    if (details?.reason === "clean-exit") return;
+    recover(`the renderer stopped (${details?.reason ?? "unknown"})`);
+  });
+  win.on("unresponsive", () => recover("it stopped answering"));
+
   win.on("move", () => {
     const bounds = win?.getBounds();
     if (bounds) writeWindowState({ x: Math.round(bounds.x + bounds.width / 2), y: bounds.y });
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    openTrustedUrl(url);
     return { action: "deny" };
   });
 
   win.webContents.on("will-navigate", (event, url) => {
     if (!url.startsWith(BASE_URL)) {
       event.preventDefault();
-      shell.openExternal(url);
+      openTrustedUrl(url);
     }
   });
 }
@@ -366,17 +399,24 @@ if (!singleInstance) {
 
     // Manual dragging: `-webkit-app-region: drag` would swallow the clicks that open the island.
     ipcMain.on("max:drag-begin", (_event, point) => {
-      cancelTween();
+      // A pending fold would move the window mid-drag, so drop it first.
+      cancelPendingResize();
       if (!win || typeof point?.screenX !== "number") return;
       const bounds = win.getBounds();
       dragOrigin = { screenX: point.screenX, screenY: point.screenY, x: bounds.x, y: bounds.y };
     });
 
     ipcMain.on("max:drag-move", (_event, point) => {
-      if (!win || !dragOrigin || typeof point?.screenX !== "number") return;
-      const x = Math.round(dragOrigin.x + (point.screenX - dragOrigin.screenX));
-      const y = Math.round(dragOrigin.y + (point.screenY - dragOrigin.screenY));
-      win.setPosition(x, y, false);
+      if (!win || !dragOrigin || !Number.isFinite(point?.screenX) || !Number.isFinite(point?.screenY)) return;
+      const wanted = {
+        ...win.getBounds(),
+        x: Math.round(dragOrigin.x + (point.screenX - dragOrigin.screenX)),
+        y: Math.round(dragOrigin.y + (point.screenY - dragOrigin.screenY)),
+      };
+      // A drag that leaves the screen must not lose the island for good.
+      const area = workAreaFor({ x: wanted.x + wanted.width / 2, y: wanted.y + 10 });
+      const safe = clampToScreen(wanted, area);
+      win.setPosition(safe.x, safe.y, false);
     });
 
     // The Settings switches are the single source of truth for the OS login item and
@@ -393,12 +433,9 @@ if (!singleInstance) {
     });
 
     ipcMain.on("max:open-external", (_event, url) => {
-      try {
-        const parsed = new URL(String(url));
-        if (parsed.protocol === "https:" || parsed.protocol === "http:") shell.openExternal(parsed.href);
-      } catch {
-        console.warn("[max] refused to open a malformed link");
-      }
+      // Only the places the island itself links to: a renderer that has been
+      // talked into opening something else must not reach the browser.
+      openTrustedUrl(url);
     });
 
     ipcMain.on("max:drag-end", () => {

@@ -5,6 +5,7 @@ import { StatsView } from "./components/StatsView";
 import { ActionsView } from "./components/ActionsView";
 import { CodeView } from "./components/CodeView";
 import { SettingsView } from "./components/SettingsView";
+import { Boundary } from "./components/Boundary";
 import { StarterCard } from "./components/StarterCard";
 import { api } from "./lib/api";
 import { filterSuggestions, type Suggestion } from "./lib/commands";
@@ -118,15 +119,21 @@ export default function App() {
   useEffect(() => {
     if (!expanded) return undefined;
     let timer = 0;
+    let lastHeight = 0;
     const measure = () => {
       const node = islandRef.current;
       if (!node) return;
       const height = Math.ceil(node.getBoundingClientRect().height);
-      if (height > 0) shellBridge()?.setMode("expanded", height);
+      // Only chase real changes: a resize per pixel would make the frame flicker
+      // as tabs grow or shrink by a line.
+      if (height > 0 && Math.abs(height - lastHeight) > 8) {
+        lastHeight = height;
+        shellBridge()?.setMode("expanded", height);
+      }
     };
     const observer = new ResizeObserver(() => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(measure, 240);
+      timer = window.setTimeout(measure, 320);
     });
     if (islandRef.current) observer.observe(islandRef.current);
     return () => {
@@ -197,6 +204,7 @@ export default function App() {
   const sseAlive = useLiveStream({
     onActivity: (activity) => setState((prev) => (prev ? { ...prev, activity } : prev)),
     onNotes: (notes) => setState((prev) => (prev ? { ...prev, notes } : prev)),
+    onStats: (stats) => setState((prev) => (prev ? { ...prev, stats } : prev)),
   });
 
   /* --------------------------------------------------------------- idleness */
@@ -583,6 +591,7 @@ export default function App() {
               </div>
 
               <div className="panel__body">
+                <Boundary label={tab}>
                 {tab === "now" && !starterHidden && state.activity.length === 0 && (
                   <StarterCard
                     state={state}
@@ -645,6 +654,7 @@ export default function App() {
                     onNotice={showToast}
                   />
                 )}
+                </Boundary>
               </div>
 
               <form
