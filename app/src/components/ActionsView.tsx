@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import type { AppEntry } from "../lib/types";
 
 interface ActionsViewProps {
   apps: AppEntry[];
   onRun: (command: string) => void;
+  onNotice?: (text: string, tone: "ok" | "error") => void;
 }
 
-const SCAN_NOTE = "Checked this machine — only the apps found here are listed.";
+/** Paste-in command that dumps every app on the laptop to a text file. */
+const SCAN_COMMAND =
+  "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Get-StartApps | Sort-Object Name | ForEach-Object { $_.Name } | Out-File \\\"$env:USERPROFILE\\Desktop\\max-apps.txt\\\" -Encoding utf8; Get-ItemProperty 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Where-Object DisplayName | ForEach-Object { $_.DisplayName } | Sort-Object -Unique | Out-File \\\"$env:USERPROFILE\\Desktop\\max-apps.txt\\\" -Append -Encoding utf8; notepad \\\"$env:USERPROFILE\\Desktop\\max-apps.txt\\\"\"";
 
 const HOW_LABEL: Record<string, string> = {
   exe: "its executable",
@@ -46,12 +49,14 @@ const GROUPS: { title: string; items: { cmd: string; desc: string }[] }[] = [
   },
 ];
 
-export function ActionsView({ apps, onRun }: ActionsViewProps) {
+export function ActionsView({ apps, onRun, onNotice }: ActionsViewProps) {
   const [scanned, setScanned] = useState<AppEntry[] | null>(null);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showMissing, setShowMissing] = useState(false);
+  const [showScan, setShowScan] = useState(false);
 
-  const scan = async () => {
+  const scan = useCallback(async () => {
     setScanning(true);
     setError(null);
     try {
@@ -62,49 +67,95 @@ export function ActionsView({ apps, onRun }: ActionsViewProps) {
     } finally {
       setScanning(false);
     }
-  };
+  }, []);
 
   // Resolve the allowlist against this machine once, so the list never offers a
   // program that is not installed.
   useEffect(() => {
     void scan();
-  }, []);
+  }, [scan]);
 
-  const { list, hidden } = useMemo(() => {
-    const source = scanned ?? apps;
-    const found = source.filter((app) => app.available !== false);
-    const missing = scanned ? scanned.filter((app) => app.available === false) : [];
-    return { list: found.length ? found : source, hidden: missing };
+  const { installed, missing } = useMemo(() => {
+    if (!scanned) return { installed: apps, missing: [] as AppEntry[] };
+    return {
+      installed: scanned.filter((app) => app.available !== false),
+      missing: scanned.filter((app) => app.available === false),
+    };
   }, [scanned, apps]);
+
+  const copyCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(SCAN_COMMAND);
+      onNotice?.("Command copied — paste it in PowerShell.", "ok");
+    } catch {
+      onNotice?.("Select the command and copy it manually.", "error");
+    }
+  };
 
   return (
     <div className="view">
       <div className="section">
         <div className="section__head">
-          <h3 className="section__title">Apps · click to launch</h3>
+          <h3 className="section__title">
+            Apps on this laptop · {installed.length}
+            {scanning ? " · scanning…" : ""}
+          </h3>
           <button className="text-link" onClick={() => void scan()} disabled={scanning}>
-            {scanning ? "scanning…" : "scan again"}
+            scan again
           </button>
         </div>
-        <div className="grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-          {list.map((app) => (
-            <button
-              key={app.id}
-              className="action"
-              title={app.how ? `Found via ${HOW_LABEL[app.how] ?? app.how}` : `Open ${app.label}`}
-              onClick={() => onRun(`open ${app.terms[0]}`)}
-            >
-              <span className="action__cmd">{app.label}</span>
-              <span className="action__desc">open</span>
-            </button>
-          ))}
-        </div>
-        {error ? <div className="hint">{error}</div> : scanned ? <div className="hint">{SCAN_NOTE}</div> : null}
-        {hidden.length > 0 && (
+
+        {installed.length === 0 ? (
           <div className="hint">
-            Not installed here: {hidden.map((app) => app.label).join(", ")}. Install one and press “scan again”.
+            Nothing from my app table was found on this machine yet. {scanning ? "Still looking…" : "Press “scan again” after installing an app."}
+          </div>
+        ) : (
+          <div className="grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            {installed.map((app) => (
+              <button
+                key={app.id}
+                className="action"
+                title={app.how ? `Found via ${HOW_LABEL[app.how] ?? app.how}` : `Open ${app.label}`}
+                onClick={() => onRun(`open ${app.terms[0]}`)}
+              >
+                <span className="action__cmd">{app.label}</span>
+                <span className="action__desc">
+                  open{app.how === "appx" ? " · store" : app.how === "protocol" ? " · system" : ""}
+                </span>
+              </button>
+            ))}
           </div>
         )}
+
+        {error && <div className="hint">{error}</div>}
+
+        {missing.length > 0 && (
+          <div className="hint">
+            <button className="text-link" onClick={() => setShowMissing((value) => !value)}>
+              {showMissing ? "hide" : "show"} {missing.length} app{missing.length === 1 ? "" : "s"} not found here
+            </button>
+            {showMissing && <div className="hint__body">{missing.map((app) => app.label).join(", ")}</div>}
+          </div>
+        )}
+
+        <div className="hint">
+          <button className="text-link" onClick={() => setShowScan((value) => !value)}>
+            {showScan ? "hide" : "my app isn’t listed"} →
+          </button>
+          {showScan && (
+            <div className="hint__body">
+              Run this in PowerShell on the laptop. It writes <code>max-apps.txt</code> to your Desktop and opens it —
+              send me that file and this tab gets rebuilt to match your machine exactly.
+              <pre className="code-block">{SCAN_COMMAND}</pre>
+              <button className="btn" data-variant="quiet" onClick={() => void copyCommand()}>
+                Copy command
+              </button>
+              <div className="hint hint--tight">
+                Or, from the repo folder: <code>powershell -ExecutionPolicy Bypass -File app\scripts\list-apps.ps1</code>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {GROUPS.map((group) => (

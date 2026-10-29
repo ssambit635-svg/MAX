@@ -3451,3 +3451,45 @@ body[data-shell="desktop"] .footer-note {
   opacity: 0.5;
   cursor: default;
 }
+
+/* --------------------------------------------------- actions: scan helpers */
+
+.hint__body {
+  margin-top: 7px;
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.hint__body code,
+.hint code {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #16181e;
+  border: 1px solid var(--hairline);
+  color: var(--text-2);
+}
+
+.code-block {
+  margin: 7px 0;
+  padding: 8px;
+  max-height: 96px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #0f1116;
+  border: 1px solid var(--hairline);
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 1.5;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: all;
+}
+
+.hint--tight {
+  margin-top: 6px;
+  padding: 0;
+}

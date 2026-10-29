@@ -1,0 +1,99 @@
+name: Release Windows installer
+
+# The installer is the deliverable people actually run. Packaging on every push keeps
+# CI honest, but a downloadable build only appears here — run it by hand when you want
+# a release people can install.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag, e.g. v0.2.3"
+        required: true
+        default: v0.2.3
+      prerelease:
+        description: "Mark as pre-release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck and build UI
+        run: npm run build
+
+      - name: Integration and app-resolver tests
+        run: npm test
+
+      - name: Package for Windows
+        shell: bash
+        env:
+          DEBUG: electron-builder
+        run: |
+          set -o pipefail
+          npx electron-builder --win --x64 --publish never 2>&1 | tee ../electron-builder.log
+
+      - name: Verify artefacts
+        shell: bash
+        run: |
+          ls -lh release/
+          test -n "$(ls release/*.exe 2>/dev/null)" || { echo "::error::no installer produced"; exit 1; }
+
+      - name: Show log on failure
+        if: failure()
+        shell: bash
+        run: tail -n 200 ../electron-builder.log || true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: MAX ${{ inputs.tag }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            1. Download **MAX Setup ${{ inputs.tag }}.exe** below.
+            2. Run it. Windows SmartScreen may warn because the build is unsigned → **More info → Run anyway**.
+            3. MAX starts in the top-right of the screen as a small black pill. Click it to open.
+
+            `MAX ${{ inputs.tag }}.portable.exe` runs without installing anything.
+
+            ## First run
+
+            GitHub (`ssambit635-svg`) and LeetCode (`sambitswain25`) come pre-filled for the owner.
+            Everyone else enters their own handles in **Settings**.
+
+            ## What's new
+
+            - Apps are found where they are actually installed: Chrome, Edge, Word, WPS Office,
+              WhatsApp, Copilot, Camera. Firefox removed.
+            - **Actions** lists only the apps present on this machine, with an app-scan command
+              for anything missing.
+            - Real GitHub stats with the green contribution calendar, flat black island.
+          files: |
+            app/release/*.exe
+            app/release/*.yml
+          fail_on_unmatched_files: true
