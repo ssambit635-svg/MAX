@@ -19,6 +19,11 @@ contextBridge.exposeInMainWorld("maxShell", {
   },
   setLoginItem: (enabled) => ipcRenderer.send("max:login-item", Boolean(enabled)),
   setAlwaysOnTop: (enabled) => ipcRenderer.send("max:always-on-top", Boolean(enabled)),
+  onCapture: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("max:capture", handler);
+    return () => ipcRenderer.removeListener("max:capture", handler);
+  },
   onOpenPalette: (callback) => {
     const handler = () => callback();
     ipcRenderer.on("max:palette", handler);

@@ -2,6 +2,8 @@ name: Build MAX
 
 on:
   workflow_dispatch:
+  # mac/Linux packaging is slow, so it rides on main and manual runs only; a PR
+  # is still gated by Windows, which is the platform the app ships first-class.
   push:
     branches: [main]
     paths:

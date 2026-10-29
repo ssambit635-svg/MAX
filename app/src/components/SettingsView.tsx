@@ -158,6 +158,18 @@ export function SettingsView({ config, busy, onConfig, onDisconnect, onVerify, o
           </div>
           <div className="setting">
             <div className="setting__text">
+              <div className="setting__name">Performance mode</div>
+              <div className="setting__desc">Stops background polling and animation. For a busy laptop or a battery that matters.</div>
+            </div>
+            <button
+              className="switch"
+              data-on={config.prefs.performanceMode}
+              onClick={() => toggle("performanceMode")}
+              aria-label="Toggle performance mode"
+            />
+          </div>
+          <div className="setting">
+            <div className="setting__text">
               <div className="setting__name">Language</div>
               <div className="setting__desc">Labels and the pet’s lines. Commands stay in English.</div>
             </div>

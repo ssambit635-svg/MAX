@@ -13,6 +13,9 @@ import { defaultWorkspace, listWorkspace, readCodeFile, writeCodeFile } from "./
 import { scanProject } from "./code/project.mjs";
 import { deleteSnippet, findSnippet, saveSnippet, snippetIndex } from "./snippets.mjs";
 import { clearLog, diagnosticsSummary, logEvent, readLog, redact } from "./diagnostics.mjs";
+import { capture, highlightSnippet, openTasks, search as searchInbox, todayEntries } from "./inbox.mjs";
+import { buildDigest, digestLine } from "./digest.mjs";
+import { switchTo } from "./switch.mjs";
 
 // Loopback by default: an island on a café Wi-Fi must not be reachable from the
 // next table. Anything wider has to be asked for explicitly (a dev preview).
@@ -157,6 +160,48 @@ async function handleApi(req, res, url) {
       apps: appCatalog(),
       platform: process.platform,
     });
+  }
+
+
+  /* ------------------------------------------------- capture, digest, switch */
+
+  if (route === "POST /api/capture" && req.method === "POST") {
+    const body = await readBody(req);
+    const text = typeof body?.text === "string" ? body.text : "";
+    const tag = typeof body?.tag === "string" ? body.tag : "";
+    const result = capture(text, { tag });
+    if (!result.ok) return sendJson(res, 400, { ok: false, message: result.message });
+    appendActivity({ kind: "note", title: "Captured a line", detail: text.slice(0, 120) });
+    return sendJson(res, 200, { ...result, message: "Captured." });
+  }
+
+  if (route === "GET /api/inbox") {
+    const query = url.searchParams.get("q") ?? "";
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 12, 1), 50);
+    const result = searchInbox(query, { limit });
+    // `html` is escaped inside highlightSnippet: the renderer may set it directly.
+    const hits = result.hits.map((hit) => ({ ...hit, html: highlightSnippet(hit.snippet, query) }));
+    return sendJson(res, 200, { ok: true, ...result, hits });
+  }
+
+  if (route === "GET /api/digest") {
+    const stats = await collectStats();
+    const digest = buildDigest({
+      stats,
+      activity: loadActivity(),
+      tasks: openTasks(),
+      entries: todayEntries(),
+    });
+    return sendJson(res, 200, { ok: true, digest, line: digestLine(digest) });
+  }
+
+  if (route === "POST /api/switch" && req.method === "POST") {
+    const body = await readBody(req);
+    const query = typeof body?.query === "string" ? body.query : typeof body?.input === "string" ? body.input : "";
+    if (!query.trim()) return sendJson(res, 400, { ok: false, message: "Switch to what?" });
+    const result = await switchTo(query);
+    if (result.ok) appendActivity({ kind: "app", title: result.launched ? `Opened ${result.switched}` : `Switched to ${result.switched}`, detail: query.slice(0, 60) });
+    return sendJson(res, 200, result);
   }
 
   if (route === "GET /api/apps") {

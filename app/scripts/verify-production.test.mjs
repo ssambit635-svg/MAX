@@ -441,9 +441,11 @@ await test("a corrupt state folder cannot stop the app from booting", async () =
 /* ------------------------------------------------------- 6. portability */
 
 const PLATFORM_RULES = [
-  { pattern: /\btaskkill\b/, allow: ["server/apps.mjs"], why: "taskkill is Windows-only; wrap it in a platform branch" },
-  { pattern: /\bpowershell\b|\bpwsh\b/i, allow: ["server/apps.mjs"], why: "PowerShell is Windows-only" },
-  { pattern: /\bcmd\.exe\b/i, allow: ["server/apps.mjs"], why: "cmd.exe is Windows-only" },
+  // A Windows-only command is fine in a file that genuinely handles all three
+  // platforms; the rule below proves that, line by line, instead of trusting a name.
+  { pattern: /\btaskkill\b/, allow: ["server/apps.mjs"], branches: true, why: "taskkill is Windows-only; wrap it in a platform branch" },
+  { pattern: /\bpowershell\b|\bpwsh\b/i, allow: ["server/apps.mjs"], branches: true, why: "PowerShell is Windows-only" },
+  { pattern: /\bcmd\.exe\b/i, allow: ["server/apps.mjs"], branches: true, why: "cmd.exe is Windows-only" },
   { pattern: /["'`]C:\\\\/, allow: [], why: "hard-coded Windows path" },
   { pattern: /process\.env\.USERPROFILE(?!\s*\?\?)/, allow: [], why: "USERPROFILE without a HOME fallback" },
   { pattern: /["']\/tmp\//, allow: [], why: "hard-coded /tmp" },
@@ -458,10 +460,14 @@ await test("nothing in the runtime is Windows-only or POSIX-only by accident", a
   for (const file of files) {
     const relative = path.relative(APP, file).split(path.sep).join("/");
     const source = fs.readFileSync(file, "utf8");
+    // A file that branches on all three platforms may use their native tools.
+    const branches =
+      /platform === "win32"/.test(source) && /"darwin"/.test(source) && /"linux"/.test(source);
     source.split("\n").forEach((line, index) => {
       if (line.trim().startsWith("*") || line.trim().startsWith("//")) return;
       for (const rule of PLATFORM_RULES) {
         if (rule.allow.includes(relative)) continue;
+        if (rule.branches && branches) continue;
         if (rule.pattern.test(line)) problems.push(`${relative}:${index + 1} ${rule.why} — ${line.trim().slice(0, 90)}`);
       }
     });
@@ -1275,7 +1281,17 @@ await test("bad folders are refused with words, not stack traces", async () => {
 
 await test("no route ever answers with a crash", async () => {
   const problems = [];
-  const routes = ["/api/state", "/api/config", "/api/apps", "/api/notes", "/api/snippets", "/api/activity", "/api/diagnostics"];
+  const routes = [
+    "/api/state",
+    "/api/config",
+    "/api/apps",
+    "/api/notes",
+    "/api/snippets",
+    "/api/activity",
+    "/api/diagnostics",
+    "/api/digest",
+    "/api/inbox?q=anything",
+  ];
   for (const route of routes) {
     const response = await call("GET", route);
     if (response.status >= 500) problems.push(`GET ${route} → ${response.status}`);
@@ -1288,9 +1304,13 @@ await test("no route ever answers with a crash", async () => {
     ["POST", "/api/code/open", { path: 42 }],
     ["POST", "/api/code/scan", { root: "../../.." }],
     ["POST", "/api/snippets", { name: [], body: [] }],
+    ["POST", "/api/capture", { text: 42, tag: {} }],
+    ["POST", "/api/capture", "[not an object]", "raw"],
+    ["POST", "/api/switch", { query: { evil: true } }],
+    ["POST", "/api/switch", { query: "x".repeat(5000) }],
   ];
-  for (const [method, route, body] of hostile) {
-    const response = await call(method, route, body);
+  for (const [method, route, body, mode] of hostile) {
+    const response = await call(method, route, body, { raw: mode === "raw" });
     if (response.status >= 500) problems.push(`${method} ${route} crashed with ${response.status}`);
   }
   return problems;

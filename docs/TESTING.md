@@ -17,9 +17,9 @@ npm install
 npm test
 ```
 
-**Expect** — `168` lines starting with `PASS`, ending with `the app survives the gauntlet`, exit code 0.
-The seven suites are integrations (10), apps (21), code engine (40), highlight (7), codebase (10),
-tools (14), and the production gauntlet (66). `SKIP esbuild unavailable` on the highlight suite means
+**Expect** — `177` lines starting with `PASS`, ending with `the app survives the gauntlet`, exit code 0.
+The eight suites are integrations (10), apps (21), code engine (40), highlight (7), codebase (10),
+tools (14), and the product checks (9), and the production gauntlet (66). `SKIP esbuild unavailable` on the highlight suite means
 you ran files before `npm install` — rerun it.
 
 **The three commands that matter**

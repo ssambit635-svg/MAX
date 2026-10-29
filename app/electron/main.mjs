@@ -387,8 +387,15 @@ if (!singleInstance) {
 
     if (startupFailure) return;
 
-    // Toggle, but through the renderer — main never resizes behind its back.
-    globalShortcut.register("CommandOrControl+Shift+Space", () => toggleWindow());
+    // Capture from anywhere: the island opens with the composer already waiting,
+    // which is the whole point of capture being cheap.
+    globalShortcut.register("CommandOrControl+Shift+Space", () => {
+      openIsland();
+      win?.webContents.send("max:palette", { mode: "capture" });
+      win?.webContents.send("max:capture");
+    });
+    // The plain toggle lives one key over, so both habits work.
+    globalShortcut.register("CommandOrControl+Shift+M", () => toggleWindow());
 
     ipcMain.on("max:mode", (_event, payload) => {
       const mode = payload?.mode === "expanded" ? "expanded" : "collapsed";
