@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, Tray, dialog, globalShortcut, ipcMain, native
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { checkForUpdates, initUpdater, installUpdate, stopUpdater, updateStatus } from "./updater.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -314,6 +315,12 @@ function refreshTrayMenu() {
           refreshTrayMenu();
         },
       },
+      { label: "Check for updates…", click: () => void checkForUpdates() },
+      {
+        label: updateStatus().state === "ready" ? `Restart to install ${updateStatus().version ?? "update"}` : "Restart to install update",
+        visible: updateStatus().state === "ready",
+        click: () => installUpdate(),
+      },
       { label: "Open settings folder", click: () => shell.openPath(app.getPath("userData")) },
       { type: "separator" },
       { label: "Quit MAX", click: () => { quitting = true; app.quit(); } },
@@ -336,6 +343,7 @@ if (!singleInstance) {
     await startServer();
     createWindow();
     createTray();
+    void initUpdater();
 
     if (startupFailure) return;
 
@@ -401,6 +409,10 @@ if (!singleInstance) {
       app.quit();
     });
 
+    ipcMain.handle("max:update-status", () => updateStatus());
+    ipcMain.on("max:update-check", () => void checkForUpdates());
+    ipcMain.on("max:update-install", () => installUpdate());
+
     app.on("activate", () => {
       if (!win) createWindow();
       win?.showInactive();
@@ -418,6 +430,7 @@ if (!singleInstance) {
 
   app.on("before-quit", () => {
     quitting = true;
+    stopUpdater();
     globalShortcut.unregisterAll();
   });
 }

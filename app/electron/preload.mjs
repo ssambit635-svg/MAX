@@ -9,6 +9,14 @@ contextBridge.exposeInMainWorld("maxShell", {
   dragMove: (screenX, screenY) => ipcRenderer.send("max:drag-move", { screenX, screenY }),
   dragEnd: () => ipcRenderer.send("max:drag-end"),
   openExternal: (url) => ipcRenderer.send("max:open-external", url),
+  updateStatus: () => ipcRenderer.invoke("max:update-status"),
+  checkForUpdates: () => ipcRenderer.send("max:update-check"),
+  installUpdate: () => ipcRenderer.send("max:update-install"),
+  onUpdate: (callback) => {
+    const handler = (_event, status) => callback(status);
+    ipcRenderer.on("max:update", handler);
+    return () => ipcRenderer.removeListener("max:update", handler);
+  },
   setLoginItem: (enabled) => ipcRenderer.send("max:login-item", Boolean(enabled)),
   setAlwaysOnTop: (enabled) => ipcRenderer.send("max:always-on-top", Boolean(enabled)),
   onOpenPalette: (callback) => {

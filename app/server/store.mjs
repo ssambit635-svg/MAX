@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { PERSONAL_PRESET, presetEnabled } from "./personal.mjs";
 
 export const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const STATE_DIR = process.env.MAX_STATE_DIR ?? path.join(APP_ROOT, ".max");
+export const STATE_DIR = process.env.MAX_STATE_DIR ?? path.join(APP_ROOT, ".max");
 const CONFIG_FILE = path.join(STATE_DIR, "config.json");
 const ACTIVITY_FILE = path.join(STATE_DIR, "activity.json");
 
@@ -16,12 +16,16 @@ const DEFAULT_CONFIG = {
   github: { username: "", token: "" },
   leetcode: { username: "" },
   render: { apiKey: "" },
+  /** User-defined launchers: { name, path } — see server/apps.mjs. */
+  customApps: [],
   prefs: {
     launchAtLogin: false,
     alwaysOnTop: true,
     reduceMotion: false,
     keepIslandOpen: false,
     idleSleepSeconds: 120,
+    language: "en",
+    lastSeenVersion: "",
   },
 };
 
@@ -90,6 +94,7 @@ export function publicConfig(config = loadConfig()) {
     github: { username: config.github.username, connected: Boolean(config.github.token || config.github.username) },
     leetcode: { username: config.leetcode.username, connected: Boolean(config.leetcode.username) },
     render: { connected: Boolean(config.render.apiKey) },
+    customApps: (config.customApps ?? []).map((app) => ({ name: app.name })),
     preset: config.preset?.applied ? { applied: true, owner: config.preset.owner } : { applied: false },
   };
 }

@@ -8,6 +8,10 @@ export interface MaxShellBridge {
   dragEnd: () => void;
   openExternal: (url: string) => void;
   setLoginItem: (enabled: boolean) => void;
+  updateStatus: () => Promise<{ state: string; version: string | null; message: string }>;
+  checkForUpdates: () => void;
+  installUpdate: () => void;
+  onUpdate: (callback: (status: { state: string; version: string | null; message: string }) => void) => () => void;
   setAlwaysOnTop: (enabled: boolean) => void;
   onOpenPalette: (callback: () => void) => () => void;
   onCollapse: (callback: () => void) => () => void;

@@ -10,7 +10,9 @@ import { api } from "./lib/api";
 import { filterSuggestions, type Suggestion } from "./lib/commands";
 import { greeting } from "./lib/format";
 import { shellBridge } from "./lib/shell";
-import { isDesktopShell, MOOD_COPY, TABS } from "./lib/ui";
+import { latestRelease, shouldAnnounce } from "./lib/changelog";
+import { setLanguage } from "./lib/i18n";
+import { isDesktopShell, moodLine, tabLabel, TABS } from "./lib/ui";
 import { useLiveStream } from "./lib/useLiveStream";
 import { useWindowDrag } from "./lib/useWindowDrag";
 import type { CommandResult, IntegrationId, Mood, StatePayload, Tab } from "./lib/types";
@@ -24,6 +26,7 @@ export default function App() {
   // "Stay open" in Settings means Esc must not fold the island.
   const pinned = Boolean(state?.config.prefs.keepIslandOpen);
   const [tab, setTab] = useState<Tab>("now");
+  const [pendingCode, setPendingCode] = useState<{ path: string; language: string; code: string } | null>(null);
   const [mood, setMood] = useState<Mood>("idle");
   const [caption, setCaption] = useState("");
   const [toast, setToast] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
@@ -95,6 +98,23 @@ export default function App() {
   useEffect(() => {
     document.body.dataset.motion = state?.config.prefs.reduceMotion ? "reduced" : "animated";
   }, [state?.config.prefs.reduceMotion]);
+
+  // Show the release notes once per version, then remember that they were seen.
+  useEffect(() => {
+    if (!state) return;
+    if (!shouldAnnounce(state.version, state.config.prefs.lastSeenVersion)) return;
+    const release = latestRelease();
+    setExpanded(true);
+    setTab("settings");
+    showToast(`Updated to ${release.version} — ${release.title}.`, "ok");
+    applyConfig({ prefs: { lastSeenVersion: state.version } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.version]);
+
+  // Language lives in prefs, so a change repaints without a reload.
+  useEffect(() => {
+    setLanguage(state?.config.prefs.language);
+  }, [state?.config.prefs.language]);
 
   // Two prefs are owned by the desktop shell: the OS login item and always-on-top.
   // Settings and the tray menu both write them, so both read from the same config.
@@ -225,6 +245,10 @@ export default function App() {
           setExpanded(true);
         }
         if (result.ui?.highlight) glowCard(result.ui.highlight);
+        if (result.ui?.openCode) setPendingCode(result.ui.openCode);
+        if (result.ui?.copy) {
+          void navigator.clipboard.writeText(result.ui.copy).catch(() => undefined);
+        }
         if (result.ui?.focusMinutes) {
           setFocusUntil(Date.now() + result.ui.focusMinutes * 60_000);
           setTab("now");
@@ -411,11 +435,12 @@ export default function App() {
   }
 
   const focusMinutesLeft = focusUntil ? Math.max(0, Math.round((focusUntil - Date.now()) / 60000)) : 0;
-  const statusText = focusUntil ? `${focusMinutesLeft}m focus left` : MOOD_COPY[mood];
+  const statusText = focusUntil ? `${focusMinutesLeft}m focus left` : moodLine(mood);
 
   return (
     <div className="stage">
       <div className="stage__inner">
+        <h1 className="visually-hidden">MAX — desktop companion</h1>
         <div className="island" data-expanded={expanded} data-pulse={mood === "working" || mood === "celebrate"}>
           <button
             className="pill"
@@ -450,7 +475,7 @@ export default function App() {
             </span>
           </button>
 
-          <div className="panel">
+          <div className="panel" role="dialog" aria-modal="true" aria-label="MAX island">
             <div className="panel__clip">
               <div className="panel__top">
                 <div className="brand">
@@ -484,7 +509,7 @@ export default function App() {
                         lastActionAt.current = Date.now();
                       }}
                     >
-                      {entry.label}
+                      {tabLabel(entry.id)}
                     </button>
                   ))}
                 </nav>
@@ -534,7 +559,7 @@ export default function App() {
                     }}
                   />
                 )}
-                {tab === "code" && <CodeView onNotice={showToast} />}
+                {tab === "code" && <CodeView onNotice={showToast} initial={pendingCode} onConsumeInitial={() => setPendingCode(null)} />}
                 {tab === "stats" && (
                   <StatsView
                     stats={state.stats}
@@ -626,8 +651,8 @@ export default function App() {
             </div>
           </div>
 
-          <div className="toast" data-show={toast !== null} data-tone={toast?.tone}>
-            <span className="toast__dot" />
+          <div className="toast" data-show={toast !== null} data-tone={toast?.tone} role="status" aria-live="polite">
+            <span className="toast__dot" aria-hidden="true" />
             {toast?.text}
           </div>
         </div>

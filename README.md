@@ -55,7 +55,7 @@ rewritten — MAX names the line and asks you to fix that first.
 
 ## Keeping it clean
 
-Five test suites run in CI on every push, and they are as much about code health as behaviour:
+Six test suites run in CI on every push, and they are as much about code health as behaviour:
 
 | Command | Guards |
 |---|---|
@@ -64,6 +64,7 @@ Five test suites run in CI on every push, and they are as much about code health
 | `npm run test:code` | every language fixture, every safe fix, file guards |
 | `npm run test:highlight` | colours per language, no lost characters, HTML escaping |
 | `npm run test:codebase` | dead CSS rules, unused exports, dead preferences, version drift, routes that do not exist |
+| `npm run test:tools` | folder scans, snippet store, custom launchers, diagnostics redaction |
 
 `test:codebase` is the housekeeper: add a setting nobody reads, a style nobody uses or an export
 nobody imports, and it fails with the exact name.
@@ -95,8 +96,16 @@ open explorer          open spotify          open settings       close chrome
 search github for vite search youtube for lofi search leetcode  google <query>
 save note <text>       new note              focus 25            timer 10
 stats                  stats github          stats leetcode      stats render
+check ~/proj/main.py   scan ~/proj           add app Figma: C:\…\Figma.exe
+save snippet debounce: <code>                snippet debounce     snippets
+delete snippet <name>  remove app Figma
 help                   sleep                 wake
 ```
+
+`check` reviews a single file, `scan` walks a whole folder (depth 6, 400 files, skips
+`node_modules`, `.git` and dotfiles) and ranks it by score. `save snippet` keeps a fragment
+for later — `snippet <name>` puts it on the clipboard. `add app` registers a launcher of
+your own so it appears in Actions and answers to `open <name>`.
 
 Apps are launched from an **explicit allowlist** — MAX cannot run an arbitrary shell command, and
 closing an app is a graceful request (`taskkill` / `quit` / `pkill`), never a force kill.
@@ -120,18 +129,28 @@ island never looks empty and you never mistake fake numbers for real ones.
 - Credentials and preferences live in `.max/config.json` on your machine (`chmod 600`).
 - Notes are plain `.md` files in a folder you choose (default `~/Documents/MAX notes`).
 - The only network calls are the ones you asked for by connecting an integration.
+- Failures are logged locally in `.max/logs/max.log` (rotating, 256 KB). Settings can build a
+  redacted report you copy yourself — tokens, e-mail and folder names are stripped first.
+
+The full threat model lives in [`docs/SECURITY.md`](docs/SECURITY.md); certificate setup for
+signed builds is in [`docs/SIGNING.md`](docs/SIGNING.md).
 
 ## Install it on Windows
 
 Every push to `main` builds real installers. Open the Actions tab → the latest **Build MAX** run →
 **Artifacts**, and download either:
 
-- **`MAX-windows-x64`** → `MAX-0.2.1-win-x64.exe` (installer, Start-menu shortcut, optional launch at
-  login) or `MAX-0.2.1-portable.exe` (single file, nothing installed)
+- **`MAX-windows-x64`** → `MAX-0.4.0-win-x64.exe` (installer, Start-menu shortcut, optional launch at
+  login) or `MAX-0.4.0-portable.exe` (single file, nothing installed)
 - `MAX-macos` / `MAX-linux` when those runners succeed
 
 The same job runs on every pull request, so a Windows installer that would not build can never land
-on `main`.
+on `main`. It goes one step further: it runs the installer silently, checks the installed layout
+(`MAX.exe`, `app.asar`, the unpacked local service) and checks that `latest.yml` was produced for
+the updater, then uninstalls itself.
+
+An installed build updates itself from GitHub Releases — 30 seconds after launch, then every six
+hours. It downloads in the background and only installs when you press **Restart to install**.
 
 **New to it on Windows?** [`docs/QUICKSTART-WINDOWS.md`](docs/QUICKSTART-WINDOWS.md) has the exact
 install steps (including the SmartScreen step for an unsigned build) and a 10-minute test plan.
@@ -175,8 +194,9 @@ the moment a command lands.
 
 Working today: island + pill (click to open, drag to move), the pet with eight expressions, command
 palette with fuzzy suggestions, first-run guide, note saving, focus timer,
-GitHub/LeetCode/Render/VS Code/system stats, settings for all of the above, tray, global hotkey,
-CI that typechecks, smokes the API and packages installers for Windows, macOS and Linux.
+GitHub/LeetCode/Render/VS Code/system stats, folder-wide code scans, snippet library, custom app
+launchers, self-update, redacted diagnostics, English/Hindi chrome, settings for all of the above,
+tray, global hotkey, CI that typechecks, smokes the API, packages the Windows installer and installs
+it to prove it works.
 
-Next: drag-onto-window context, a small local index of your notes, and a proper onboarding flow for
-the first integration.
+Next: signing the installer (needs a certificate — see `docs/SIGNING.md`), the UI pass, and themes.

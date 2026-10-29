@@ -1,5 +1,8 @@
-import { useState } from "react";
-import type { PublicConfig } from "../lib/types";
+import { useEffect, useState } from "react";
+import { api } from "../lib/api";
+import { LANGUAGES } from "../lib/i18n";
+import { latestRelease, RELEASES } from "../lib/changelog";
+import type { DiagnosticsPayload, PublicConfig } from "../lib/types";
 import { shellBridge } from "../lib/shell";
 
 interface SettingsViewProps {
@@ -41,6 +44,41 @@ function StatusPill({ on, text }: { on: boolean; text: string }) {
 }
 
 export function SettingsView({ config, busy, onConfig, onDisconnect, onVerify, onNotice }: SettingsViewProps) {
+  const bridge = shellBridge();
+  const latest = latestRelease();
+  const [update, setUpdate] = useState<{ state: string; version: string | null; message: string }>({
+    state: "idle",
+    version: null,
+    message: "Not checked yet.",
+  });
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsPayload | null>(null);
+  const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
+
+  useEffect(() => {
+    if (!bridge?.onUpdate) return undefined;
+    void bridge.updateStatus().then(setUpdate).catch(() => undefined);
+    return bridge.onUpdate(setUpdate);
+  }, [bridge]);
+
+  const checkUpdates = () => {
+    if (!bridge) return;
+    setUpdateBusy(true);
+    bridge.checkForUpdates();
+    window.setTimeout(() => setUpdateBusy(false), 3000);
+  };
+
+  const loadDiagnostics = async () => {
+    setDiagnosticsBusy(true);
+    try {
+      setDiagnostics(await api.diagnostics());
+    } catch {
+      onNotice("I couldn't build that report. Try again.", "error");
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  };
+
   const [githubUser, setGithubUser] = useState(config.github.username);
   const [githubToken, setGithubToken] = useState("");
   const [leetcodeUser, setLeetcodeUser] = useState(config.leetcode.username);
@@ -118,6 +156,57 @@ export function SettingsView({ config, busy, onConfig, onDisconnect, onVerify, o
             </div>
             <button className="switch" data-on={config.prefs.reduceMotion} onClick={() => toggle("reduceMotion")} aria-label="Toggle reduced motion" />
           </div>
+          <div className="setting">
+            <div className="setting__text">
+              <div className="setting__name">Language</div>
+              <div className="setting__desc">Labels and the pet’s lines. Commands stay in English.</div>
+            </div>
+            <select
+              className="input settings__select"
+              value={config.prefs.language ?? "en"}
+              onChange={(event) => onConfig({ prefs: { language: event.target.value } })}
+              aria-label="Language"
+            >
+              {LANGUAGES.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="section">
+        <h3 className="section__title">What’s new</h3>
+        <div className="card" style={{ padding: "10px 14px" }}>
+          <div className="release">
+            <div className="release__head">
+              <strong>{latest.title}</strong>
+              <span className="release__version">v{latest.version}</span>
+            </div>
+            <ul className="release__list">
+              {latest.changes.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
+          <details className="release__older">
+            <summary>Older versions</summary>
+            {RELEASES.slice(1).map((release) => (
+              <div className="release" key={release.version}>
+                <div className="release__head">
+                  <strong>{release.title}</strong>
+                  <span className="release__version">v{release.version}</span>
+                </div>
+                <ul className="release__list">
+                  {release.changes.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </details>
         </div>
       </div>
 
@@ -288,6 +377,50 @@ export function SettingsView({ config, busy, onConfig, onDisconnect, onVerify, o
         </div>
         <div className="hint" style={{ marginTop: 8 }}>
           Every “save note” writes a plain Markdown file here. Click the folder path in Explorer to see them.
+        </div>
+      </div>
+
+      <div className="section">
+        <h3 className="section__title">Updates and diagnostics</h3>
+        <div className="card" style={{ padding: "10px 14px" }}>
+          <div className="field">
+            <button className="btn" disabled={!bridge || updateBusy} onClick={checkUpdates}>
+              Check for updates
+            </button>
+            {update.state === "ready" && (
+              <button className="btn" data-variant="primary" onClick={() => bridge?.installUpdate()}>
+                Restart to install {update.version ?? ""}
+              </button>
+            )}
+          </div>
+          <div className="hint" style={{ marginTop: 8 }}>
+            {bridge ? update.message : "Updates arrive with the installed app; this preview never phones home."}
+          </div>
+
+          <div className="field" style={{ marginTop: 14 }}>
+            <button className="btn" data-variant="quiet" disabled={diagnosticsBusy} onClick={loadDiagnostics}>
+              {diagnosticsBusy ? "Collecting…" : "Copy a diagnostics report"}
+            </button>
+            <button
+              className="btn"
+              data-variant="quiet"
+              disabled={!diagnostics}
+              onClick={() => {
+                void navigator.clipboard.writeText(diagnostics?.summary ?? "").then(
+                  () => onNotice("Diagnostics copied. Tokens, paths and e-mail are removed.", "ok"),
+                  () => onNotice("I couldn't reach the clipboard.", "error"),
+                );
+              }}
+            >
+              Copy to clipboard
+            </button>
+          </div>
+          <div className="hint" style={{ marginTop: 8 }}>
+            {diagnostics
+              ? "Nothing was sent anywhere. The report stays on your clipboard until you paste it."
+              : "A short, redacted summary you can paste into a GitHub issue: versions, preferences, recent failures."}
+          </div>
+          {diagnostics && <pre className="diag">{diagnostics.summary}</pre>}
         </div>
       </div>
 

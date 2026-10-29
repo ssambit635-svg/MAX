@@ -9,19 +9,16 @@ import { collectStats, invalidateStats, verifyIntegration } from "./integrations
 import { catalog as languageCatalog, detectLanguage, getLanguage } from "./code/languages.mjs";
 import { applyFixes, review } from "./code/engine.mjs";
 import { defaultWorkspace, listWorkspace, readCodeFile, writeCodeFile } from "./code/files.mjs";
+import { scanProject } from "./code/project.mjs";
+import { deleteSnippet, findSnippet, saveSnippet, snippetIndex } from "./snippets.mjs";
+import { clearLog, diagnosticsSummary, logEvent, readLog } from "./diagnostics.mjs";
 
 const DEFAULT_HOST = process.env.MAX_HOST ?? "0.0.0.0";
 const DEFAULT_PORT = Number(process.env.MAX_API_PORT ?? process.env.PORT ?? 7999);
 const DIST = process.env.MAX_DIST_DIR ?? path.join(APP_ROOT, "dist");
 const ASSETS = process.env.MAX_ASSETS_DIR ?? path.join(APP_ROOT, "assets");
 
-const VERSION = process.env.MAX_VERSION || (() => {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(APP_ROOT, "package.json"), "utf8")).version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-})();
+const { VERSION } = await import("./version.mjs");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -164,6 +161,48 @@ async function handleApi(req, res, url) {
   if (route === "POST /api/code/open" && req.method === "POST") {
     const body = await readBody(req);
     return sendJson(res, 200, readCodeFile(body?.path, loadConfig().codeDir ?? defaultWorkspace()));
+  }
+
+  if (route === "GET /api/code/snippets") {
+    return sendJson(res, 200, { snippets: snippetIndex() });
+  }
+
+  if (route === "POST /api/code/snippets" && req.method === "POST") {
+    const body = await readBody(req);
+    const result = saveSnippet(body?.name, body?.code);
+    return sendJson(res, result.ok ? 200 : 400, result);
+  }
+
+  if (route === "POST /api/code/snippets/delete" && req.method === "POST") {
+    const body = await readBody(req);
+    const result = deleteSnippet(body?.name);
+    return sendJson(res, result.ok ? 200 : 404, result);
+  }
+
+  if (route === "POST /api/code/snippet/copy" && req.method === "POST") {
+    const body = await readBody(req);
+    const found = findSnippet(body?.name);
+    return sendJson(res, found ? 200 : 404, found ? { ok: true, snippet: found } : { ok: false, message: "No snippet by that name." });
+  }
+
+  if (route === "POST /api/code/scan" && req.method === "POST") {
+    const body = await readBody(req);
+    const target = body?.root || loadConfig().codeDir || defaultWorkspace();
+    const result = scanProject(target);
+    if (result.ok) logEvent("info", "project scanned", { files: result.summary.files, score: result.score });
+    return sendJson(res, result.ok ? 200 : 400, result);
+  }
+
+  if (route === "GET /api/diagnostics") {
+    return sendJson(res, 200, {
+      version: VERSION,
+      summary: diagnosticsSummary({ config: loadConfig(), stats: await collectStats() }),
+      log: readLog(40),
+    });
+  }
+
+  if (route === "POST /api/diagnostics/clear" && req.method === "POST") {
+    return sendJson(res, 200, { ok: clearLog(), message: clearLog() ? "Log cleared." : "Nothing to clear." });
   }
 
   if (route === "POST /api/code/save" && req.method === "POST") {

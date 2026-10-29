@@ -1,7 +1,7 @@
 {
   "name": "max-companion",
   "productName": "MAX",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "private": true,
   "description": "MAX \u2014 a calm, always-on desktop companion island with a tiny animated pet that runs your small tasks.",
   "license": "MIT",
@@ -19,13 +19,15 @@
     "typecheck": "tsc --noEmit",
     "test:integrations": "node scripts/verify-integrations.test.mjs",
     "test:apps": "node scripts/verify-apps.test.mjs",
-    "test": "npm run test:integrations && npm run test:apps && npm run test:code && npm run test:highlight && npm run test:codebase",
+    "test": "npm run test:integrations && npm run test:apps && npm run test:code && npm run test:highlight && npm run test:codebase && npm run test:tools",
     "list:apps": "powershell -ExecutionPolicy Bypass -File scripts/list-apps.ps1",
     "test:code": "node scripts/verify-code-engine.test.mjs",
     "test:highlight": "node scripts/verify-highlight.test.mjs",
-    "test:codebase": "node scripts/verify-codebase.test.mjs"
+    "test:codebase": "node scripts/verify-codebase.test.mjs",
+    "test:tools": "node scripts/verify-tools.test.mjs"
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -82,7 +84,11 @@
           ]
         }
       ],
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "signingHashAlgorithms": [
+        "sha256"
+      ],
+      "verifyUpdateCodeSignature": true
     },
     "nsis": {
       "oneClick": false,
@@ -115,7 +121,14 @@
       "icon": "build/icons",
       "category": "Utility",
       "synopsis": "A calm desktop companion"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ssambit635-svg",
+        "repo": "MAX"
+      }
+    ]
   },
   "author": {
     "name": "MAX",
