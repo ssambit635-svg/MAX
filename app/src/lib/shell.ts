@@ -1,7 +1,7 @@
 export interface MaxShellBridge {
   isDesktop: boolean;
   platform: string;
-  setMode: (mode: "collapsed" | "expanded") => void;
+  setMode: (mode: "collapsed" | "expanded", height?: number) => void;
   quit: () => void;
   dragBegin: (screenX: number, screenY: number) => void;
   dragMove: (screenX: number, screenY: number) => void;

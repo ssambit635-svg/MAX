@@ -23,6 +23,11 @@ export default function App() {
   const [state, setState] = useState<StatePayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  // The panel is unmounted once it has folded. Leaving it mounted inside a
+  // shrinking frame is what squeezed the tab bar and left it looking stuck.
+  const [panelMounted, setPanelMounted] = useState(false);
+  const islandRef = useRef<HTMLDivElement | null>(null);
+  const [panelReady, setPanelReady] = useState(false);
   // "Stay open" in Settings means Esc must not fold the island.
   const pinned = Boolean(state?.config.prefs.keepIslandOpen);
   const [tab, setTab] = useState<Tab>("now");
@@ -76,9 +81,58 @@ export default function App() {
     document.body.dataset.shell = IS_SHELL ? "desktop" : "browser";
   }, [load]);
 
-  // The desktop shell hugs the island: the window grows and shrinks with the panel.
+  // The panel appears at once and leaves only after it has faded out, so the
+  // collapse never shows a squeezed half-layout.
+  useEffect(() => {
+    if (expanded) {
+      setPanelMounted(true);
+      // One frame at rest, then open — otherwise the panel is already unfolded
+      // when it mounts and there is nothing to animate.
+      let inner = 0;
+      const outer = requestAnimationFrame(() => {
+        inner = requestAnimationFrame(() => setPanelReady(true));
+      });
+      // Frames stop in an occluded window; the panel must still open.
+      const fallback = window.setTimeout(() => setPanelReady(true), 90);
+      return () => {
+        cancelAnimationFrame(outer);
+        cancelAnimationFrame(inner);
+        window.clearTimeout(fallback);
+      };
+    }
+    setPanelReady(false);
+    const id = window.setTimeout(() => setPanelMounted(false), 340);
+    return () => window.clearTimeout(id);
+  }, [expanded]);
+
+  // The desktop shell hugs the island. Main resizes on this signal only, which
+  // means the frame can never disagree with what the island is drawing.
   useEffect(() => {
     shellBridge()?.setMode(expanded ? "expanded" : "collapsed");
+  }, [expanded]);
+
+  // Once the open animation has settled, tell the shell the island's real height.
+  // Until then the frame is slightly too tall, which is invisible because that
+  // part of the window is transparent — and it stops the leftover strip from
+  // swallowing clicks meant for the app behind MAX.
+  useEffect(() => {
+    if (!expanded) return undefined;
+    let timer = 0;
+    const measure = () => {
+      const node = islandRef.current;
+      if (!node) return;
+      const height = Math.ceil(node.getBoundingClientRect().height);
+      if (height > 0) shellBridge()?.setMode("expanded", height);
+    };
+    const observer = new ResizeObserver(() => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(measure, 240);
+    });
+    if (islandRef.current) observer.observe(islandRef.current);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(timer);
+    };
   }, [expanded]);
 
   useEffect(() => {
@@ -441,7 +495,13 @@ export default function App() {
     <div className="stage">
       <div className="stage__inner">
         <h1 className="visually-hidden">MAX — desktop companion</h1>
-        <div className="island" data-expanded={expanded} data-pulse={mood === "working" || mood === "celebrate"}>
+        <div
+          ref={islandRef}
+          className="island"
+          data-expanded={expanded}
+          data-panel={panelReady ? "in" : "out"}
+          data-pulse={mood === "working" || mood === "celebrate"}
+        >
           <button
             className="pill"
             type="button"
@@ -475,6 +535,7 @@ export default function App() {
             </span>
           </button>
 
+          {panelMounted && (
           <div className="panel" role="dialog" aria-modal="true" aria-label="MAX island">
             <div className="panel__clip">
               <div className="panel__top">
@@ -650,6 +711,7 @@ export default function App() {
               </form>
             </div>
           </div>
+          )}
 
           <div className="toast" data-show={toast !== null} data-tone={toast?.tone} role="status" aria-live="polite">
             <span className="toast__dot" aria-hidden="true" />

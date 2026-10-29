@@ -39,12 +39,15 @@ npm run desktop
 terminal shows `[max] island server on …`.
 **Watch for** a blank window (server not up) or the terminal closing instantly (Node version < 20).
 
-### A3 · Open and close
+### A3 · Open and close (rebuilt after the stuck-island bug)
 - Click the collapsed island → panel expands, tabs visible
-- Press `Esc` → collapses back
+- Press `Esc` → collapses back **fully** — no tab strip left behind, no scrollbar
+- Press `Ctrl+Shift+Space` twice → opens, then folds completely
 - Drag the island by its top area → it moves, and remembers the position after restart
+- Open it 5 times fast, then close it 5 times fast → it always lands either fully open or fully shut
 
-**Pass when** all three work and the open is smooth (slight overshoot, not a snap).
+**Pass when** every cycle ends clean. The old build froze mid-way because the window
+resized itself behind the renderer's back.
 
 ### A4 · Tray
 Right-click the tray icon.

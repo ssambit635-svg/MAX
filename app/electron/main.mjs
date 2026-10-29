@@ -12,8 +12,14 @@ const PREFERRED_PORT = Number(process.env.MAX_API_PORT ?? 47199);
 const PORT_SEARCH_RANGE = 12;
 let BASE_URL = `http://127.0.0.1:${PREFERRED_PORT}`;
 
-const COLLAPSED = { width: 380, height: 88 };
-const EXPANDED = { width: 880, height: 744 };
+// The window is a transparent frame that hugs the island: 396px island + 6px of
+// shadow room on each side, and 56px pill + 6px top/bottom.
+const COLLAPSED = { width: 408, height: 64 };
+const EXPANDED = { width: 868, height: 760 };
+// When folding, the panel fades, then the island folds, and only then does the
+// frame shrink. A frame that snaps shut under a still-open panel is exactly what
+// made it look stuck before.
+const COLLAPSE_DELAY_MS = 560;
 
 let win = null;
 let tray = null;
@@ -51,27 +57,15 @@ function workAreaFor(point) {
   }
 }
 
-// Windows ignores `animate` in setBounds, so the opening animation is tweened
-// here frame by frame. Slow and eased on purpose: the island unfolds, it does
-// not snap.
-const TWEEN_MS = 560;
-let tween = null;
+// Growing is instant so the island has room to unfold into; shrinking waits for
+// the fold so the panel is never squeezed by a window that got there first.
+let pendingResize = null;
 
-function cancelTween() {
-  if (tween) {
-    clearInterval(tween.timer);
-    tween = null;
-  }
-}
-
-function easeInOutCubic(t) {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-}
-
-function applyMode(mode) {
-  if (!win) return;
-  currentMode = mode;
-  const size = mode === "expanded" ? EXPANDED : COLLAPSED;
+function boundsFor(mode, islandHeight) {
+  const base = mode === "expanded" ? EXPANDED : COLLAPSED;
+  // The renderer measures the island, so the frame hugs it instead of leaving a
+  // transparent strip that would still eat clicks.
+  const size = islandHeight ? { ...base, height: Math.max(COLLAPSED.height, islandHeight + 12) } : base;
   const bounds = win.getBounds();
   const area = workAreaFor({ x: bounds.x + bounds.width / 2, y: bounds.y + 10 });
   const width = Math.min(size.width, area.width - 20);
@@ -80,37 +74,50 @@ function applyMode(mode) {
   const centerX = saved.x ?? bounds.x + bounds.width / 2;
   const x = Math.round(Math.min(Math.max(area.x + 8, centerX - width / 2), area.x + area.width - width - 8));
   const top = Math.round(Math.max(area.y + 6, Math.min(saved.y ?? area.y + 8, area.y + area.height - height - 6)));
-  const target = { x, y: top, width, height };
+  return { x, y: top, width, height };
+}
 
-  cancelTween();
-  const from = { ...bounds };
-  const distance = Math.abs(from.width - target.width);
-  if (distance < 4) {
-    win.setBounds(target, false);
+/** Frameless windows ignore some resizes while marked non-resizable; this borrows
+ *  the flag for the one call that needs it instead of tweening through it. */
+function setWindowBounds(bounds) {
+  if (!win || win.isDestroyed()) return;
+  const resizable = win.isResizable();
+  if (!resizable) win.setResizable(true);
+  win.setBounds(bounds, false);
+  if (!resizable) win.setResizable(false);
+}
+
+function cancelPendingResize() {
+  if (pendingResize) {
+    clearTimeout(pendingResize);
+    pendingResize = null;
+  }
+}
+
+function sameBounds(a, b) {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+function applyMode(mode, islandHeight = null) {
+  if (!win || win.isDestroyed()) return;
+  // A pending shrink must die the moment anything else asks for a size, or the
+  // window folds itself a moment after the island was reopened.
+  cancelPendingResize();
+
+  const target = boundsFor(mode, islandHeight);
+  const unchanged = mode === currentMode && sameBounds(win.getBounds(), target);
+  currentMode = mode;
+  if (unchanged) return;
+
+  if (mode === "collapsed") {
+    pendingResize = setTimeout(() => {
+      pendingResize = null;
+      setWindowBounds(boundsFor("collapsed"));
+    }, COLLAPSE_DELAY_MS);
     return;
   }
 
-  // Duration scales a little with how far the island has to travel.
-  const duration = Math.min(720, Math.max(420, TWEEN_MS * (distance > 260 ? 1.15 : 1)));
-  const started = Date.now();
-  tween = {
-    timer: setInterval(() => {
-      if (!win || win.isDestroyed()) return cancelTween();
-      const progress = Math.min(1, (Date.now() - started) / duration);
-      const eased = easeInOutCubic(progress);
-      const frame = {
-        x: Math.round(from.x + (target.x - from.x) * eased),
-        y: Math.round(from.y + (target.y - from.y) * eased),
-        width: Math.round(from.width + (target.width - from.width) * eased),
-        height: Math.round(from.height + (target.height - from.height) * eased),
-      };
-      win.setBounds(frame, false);
-      if (progress >= 1) {
-        win.setBounds(target, false);
-        cancelTween();
-      }
-    }, 16),
-  };
+  setWindowBounds(target);
 }
 
 async function waitForServer(timeoutMs = 12_000) {
@@ -262,14 +269,22 @@ function createWindow() {
   });
 }
 
+/** Ask the island to open. The renderer animates, then reports its size back. */
+function openIsland() {
+  if (!win) return;
+  if (!win.isVisible()) win.showInactive();
+  win.webContents.send("max:palette");
+}
+
+/** Ask the island to fold. Same path as clicking the chevron, so it cannot desync. */
+function closeIsland() {
+  win?.webContents.send("max:collapse");
+}
+
 function toggleWindow() {
   if (!win) return;
-  if (win.isVisible()) {
-    applyMode("collapsed");
-    win.webContents.send("max:collapse");
-  } else {
-    win.showInactive();
-  }
+  if (currentMode === "expanded" && win.isVisible()) closeIsland();
+  else openIsland();
 }
 
 function createTray() {
@@ -278,11 +293,7 @@ function createTray() {
   tray = new Tray(icon);
   tray.setToolTip("MAX — desktop companion");
   refreshTrayMenu();
-  tray.on("click", () => {
-    win?.showInactive();
-    applyMode("expanded");
-    win?.webContents.send("max:palette");
-  });
+  tray.on("click", () => openIsland());
 }
 
 /** Rebuild the menu so a checkbox never lies about the current state. */
@@ -290,8 +301,8 @@ function refreshTrayMenu() {
   if (!tray) return;
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: "Open MAX", click: () => { win?.showInactive(); applyMode("expanded"); win?.webContents.send("max:palette"); } },
-      { label: "Command palette", accelerator: "CommandOrControl+Shift+Space", click: () => { win?.showInactive(); applyMode("expanded"); win?.webContents.send("max:palette"); } },
+      { label: "Open MAX", click: () => openIsland() },
+      { label: "Command palette", accelerator: "CommandOrControl+Shift+Space", click: () => openIsland() },
       { type: "separator" },
       {
         label: "Always on top",
@@ -332,11 +343,7 @@ const singleInstance = app.requestSingleInstanceLock();
 if (!singleInstance) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    win?.showInactive();
-    applyMode("expanded");
-    win?.webContents.send("max:palette");
-  });
+  app.on("second-instance", () => openIsland());
 
   app.whenReady().then(async () => {
     app.setAppUserModelId("dev.max.companion");
@@ -347,18 +354,13 @@ if (!singleInstance) {
 
     if (startupFailure) return;
 
-    globalShortcut.register("CommandOrControl+Shift+Space", () => {
-      win?.showInactive();
-      if (currentMode === "expanded") {
-        applyMode("collapsed");
-      } else {
-        applyMode("expanded");
-        win?.webContents.send("max:palette");
-      }
-    });
+    // Toggle, but through the renderer — main never resizes behind its back.
+    globalShortcut.register("CommandOrControl+Shift+Space", () => toggleWindow());
 
-    ipcMain.on("max:mode", (_event, mode) => {
-      applyMode(mode === "expanded" ? "expanded" : "collapsed");
+    ipcMain.on("max:mode", (_event, payload) => {
+      const mode = payload?.mode === "expanded" ? "expanded" : "collapsed";
+      const height = Number(payload?.height);
+      applyMode(mode, Number.isFinite(height) && height > 0 ? Math.ceil(height) : null);
     });
 
 
