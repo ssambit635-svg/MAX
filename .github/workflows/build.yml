@@ -142,15 +142,58 @@ jobs:
       - name: Install silently and check the installed layout
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $installer = Get-ChildItem release/*.exe | Where-Object { $_.Name -notmatch 'portable' } | Select-Object -First 1
-          if (-not $installer) { Write-Error "no NSIS installer found"; exit 1 }
-          Write-Host "installing $($installer.Name)"
-          Start-Process -FilePath $installer.FullName -ArgumentList '/S', '/currentuser' -Wait
-          $root = Join-Path $env:LOCALAPPDATA 'Programs\MAX'
-          if (-not (Test-Path (Join-Path $root 'MAX.exe'))) { Write-Error "MAX.exe missing after install"; exit 1 }
-          if (-not (Test-Path (Join-Path $root 'resources\app.asar'))) { Write-Error "app.asar missing"; exit 1 }
+          if (-not $installer) { Write-Error "no NSIS installer found in release/"; exit 1 }
+          Write-Host "installer: $($installer.FullName) ($([math]::Round($installer.Length/1MB,1)) MB)"
+
+          $proc = Start-Process -FilePath $installer.FullName -ArgumentList '/S', '/currentuser' -PassThru
+          $proc | Wait-Process -Timeout 300
+          Write-Host "installer exited with code $($proc.ExitCode)"
+
+          # NSIS can return before every file is on disk, so poll instead of trusting -Wait.
+          $candidates = @(
+            (Join-Path $env:LOCALAPPDATA 'Programs\MAX'),
+            (Join-Path $env:LOCALAPPDATA 'Programs\max'),
+            $env:PROGRAMFILES + '\MAX',
+            ${env:PROGRAMFILES(X86)} + '\MAX'
+          ) | Where-Object { $_ }
+
+          $root = $null
+          for ($i = 0; $i -lt 30; $i++) {
+            $root = $candidates | Where-Object { Test-Path (Join-Path $_ 'MAX.exe') } | Select-Object -First 1
+            if ($root) { break }
+            Start-Sleep -Seconds 2
+          }
+
+          if (-not $root) {
+            Write-Host "::group::where did it go?"
+            $candidates | ForEach-Object { Write-Host "$_ -> $(Test-Path $_)" }
+            Get-ChildItem $env:LOCALAPPDATA -Directory -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "localappdata: $($_.Name)" }
+            Get-ChildItem ([IO.Path]::GetTempPath()) -Filter '*.log' -ErrorAction SilentlyContinue | Select-Object -First 10 | ForEach-Object { Write-Host "temp log: $($_.Name)" }
+            Write-Host "::endgroup::"
+            Write-Error "MAX.exe was not installed into any known location"
+            exit 1
+          }
+
+          Write-Host "installed to $root"
+          Get-ChildItem $root | Select-Object Name, Length | Format-Table -AutoSize | Out-String | Write-Host
+
+          $asar = Join-Path $root 'resources\app.asar'
+          if (-not (Test-Path $asar)) { Write-Error "app.asar missing at $asar"; exit 1 }
+          Write-Host ("app.asar: {0:N1} MB" -f ((Get-Item $asar).Length / 1MB))
+
+          # The local service is unpacked outside the archive, or the app cannot start.
           $server = Join-Path $root 'resources\app.asar.unpacked\server\index.mjs'
-          if (-not (Test-Path $server)) { Write-Error "unpacked server missing"; exit 1 }
+          if (-not (Test-Path $server)) {
+            Write-Host "::group::unpacked resources"
+            Get-ChildItem (Join-Path $root 'resources') -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+              Select-Object -First 40 FullName | ForEach-Object { Write-Host $_.FullName }
+            Write-Host "::endgroup::"
+            Write-Error "the local service is missing from app.asar.unpacked"
+            exit 1
+          }
+
           $size = (Get-ChildItem $root -Recurse | Measure-Object Length -Sum).Sum / 1MB
           Write-Host ("installed size: {0:N1} MB" -f $size)
           Write-Host "install layout OK"
@@ -165,9 +208,21 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          $uninstaller = Join-Path $env:LOCALAPPDATA 'Programs\MAX\Uninstall MAX.exe'
-          if (Test-Path $uninstaller) { Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait }
-          else { Write-Host "no uninstaller found - nothing to clean" }
+          $roots = @(
+            (Join-Path $env:LOCALAPPDATA 'Programs\MAX'),
+            (Join-Path $env:LOCALAPPDATA 'Programs\max'),
+            $env:PROGRAMFILES + '\MAX'
+          ) | Where-Object { $_ }
+          $found = $false
+          foreach ($root in $roots) {
+            $uninstaller = Join-Path $root 'Uninstall MAX.exe'
+            if (Test-Path $uninstaller) {
+              Write-Host "uninstalling from $root"
+              Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait
+              $found = $true
+            }
+          }
+          if (-not $found) { Write-Host "no uninstaller found - nothing to clean" }
 
       - name: Show log on failure
         if: failure()
