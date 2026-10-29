@@ -45,6 +45,9 @@ things that are safe to fix automatically:
   empty `catch`, missing `#include`, `<img>` without `alt`
 - **hints** — `var`, `console.log`, `0px`, `!important`, unused imports, long lines, TODOs
 
+The editor itself colours the file as you type (keywords, strings, comments, numbers, functions,
+tags, attributes, CSS properties), with a line gutter that flags every problem line.
+
 Press **Fix** and it applies only behaviour-preserving edits (`==` → `===`, `var` → `let`,
 `== None` → `is None`, whitespace, doctype, `lang`). A file with a structural error is never
 rewritten — MAX names the line and asks you to fix that first.

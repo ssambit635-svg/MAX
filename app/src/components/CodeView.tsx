@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { highlight } from "../lib/highlight";
 import type { CodeFixResult, CodeIssue, CodeLanguage, CodeMeta, CodeReview, Severity } from "../lib/types";
 
 interface CodeViewProps {
@@ -29,6 +30,8 @@ export function CodeView({ onNotice }: CodeViewProps) {
   const [showOpen, setShowOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const highlightRef = useRef<HTMLPreElement | null>(null);
+  const gutterRef = useRef<HTMLDivElement | null>(null);
 
   const check = useCallback(
     async (source = code, lang = language) => {
@@ -139,7 +142,23 @@ export function CodeView({ onNotice }: CodeViewProps) {
     }
   };
 
-  const lineNumbers = useMemo(() => Array.from({ length: code.split("\n").length }, (_value, index) => index + 1), [code]);
+  const lines = useMemo(() => code.split("\n"), [code]);
+  const lineNumbers = useMemo(() => Array.from({ length: lines.length }, (_value, index) => index + 1), [lines]);
+  const highlighted = useMemo(() => highlight(code.endsWith("\n") ? code : `${code} `, language), [code, language]);
+
+  // The coloured layer sits behind a transparent textarea, so it has to scroll in
+  // lock-step with it or the colours drift away from the characters.
+  const syncScroll = () => {
+    const textarea = editorRef.current;
+    if (!textarea) return;
+    if (highlightRef.current) {
+      highlightRef.current.scrollTop = textarea.scrollTop;
+      highlightRef.current.scrollLeft = textarea.scrollLeft;
+    }
+    if (gutterRef.current) {
+      gutterRef.current.style.transform = `translateY(${-textarea.scrollTop}px)`;
+    }
+  };
 
   const jumpTo = (issue: CodeIssue) => {
     setActiveLine(issue.line);
@@ -227,44 +246,56 @@ export function CodeView({ onNotice }: CodeViewProps) {
       )}
 
       <div className="code__editor">
-        <div className="code__gutter" aria-hidden>
-          {lineNumbers.map((line) => (
-            <span key={line} data-active={activeLine === line} data-flagged={review?.issues.some((issue) => issue.line === line) || undefined}>
-              {line}
-            </span>
-          ))}
+        <div className="code__gutter-window">
+          <div className="code__gutter" ref={gutterRef} aria-hidden>
+            {lineNumbers.map((line) => (
+              <span
+                key={line}
+                data-active={activeLine === line}
+                data-flagged={review?.issues.some((issue) => issue.line === line) || undefined}
+              >
+                {line}
+              </span>
+            ))}
+          </div>
         </div>
-        <textarea
-          ref={editorRef}
-          className="code__area"
-          value={code}
-          spellCheck={false}
-          onChange={(event) => {
-            setCode(event.target.value);
-            setDirty(true);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-              event.preventDefault();
-              void check();
-            }
-            if (event.key.toLowerCase() === "s" && (event.ctrlKey || event.metaKey)) {
-              event.preventDefault();
-              void save();
-            }
-            if (event.key === "Tab") {
-              event.preventDefault();
-              const target = event.currentTarget;
-              const start = target.selectionStart;
-              const end = target.selectionEnd;
-              const next = `${code.slice(0, start)}  ${code.slice(end)}`;
-              setCode(next);
+
+        <div className="code__pane">
+          <pre className="code__highlight" ref={highlightRef} aria-hidden dangerouslySetInnerHTML={{ __html: highlighted }} />
+          <textarea
+            ref={editorRef}
+            className="code__area"
+            value={code}
+            spellCheck={false}
+            wrap="off"
+            onScroll={syncScroll}
+            onChange={(event) => {
+              setCode(event.target.value);
               setDirty(true);
-              requestAnimationFrame(() => target.setSelectionRange(start + 2, start + 2));
-            }
-          }}
-          aria-label="Code editor"
-        />
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                event.preventDefault();
+                void check();
+              }
+              if (event.key.toLowerCase() === "s" && (event.ctrlKey || event.metaKey)) {
+                event.preventDefault();
+                void save();
+              }
+              if (event.key === "Tab") {
+                event.preventDefault();
+                const target = event.currentTarget;
+                const start = target.selectionStart;
+                const end = target.selectionEnd;
+                const next = `${code.slice(0, start)}  ${code.slice(end)}`;
+                setCode(next);
+                setDirty(true);
+                requestAnimationFrame(() => target.setSelectionRange(start + 2, start + 2));
+              }
+            }}
+            aria-label="Code editor"
+          />
+        </div>
       </div>
 
       <div className="code__footer">
