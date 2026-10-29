@@ -2370,7 +2370,7 @@ body {
 }
 
 .island[data-expanded="true"] {
-  width: min(668px, calc(100vw - 24px));
+  width: min(860px, calc(100vw - 24px));
   border-radius: 26px;
   background: var(--island);
 }
@@ -2529,8 +2529,8 @@ body {
 
 .panel__body {
   padding: 0 14px 12px;
-  min-height: 352px;
-  max-height: 404px;
+  min-height: 470px;
+  max-height: 546px;
 }
 
 /* -------------------------------------------------------------------- cards */
@@ -3498,8 +3498,10 @@ body[data-shell="desktop"] .footer-note {
 
 .code {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
 }
 
 .code__bar {
@@ -3509,10 +3511,10 @@ body[data-shell="desktop"] .footer-note {
 }
 
 .code__lang {
-  width: 106px;
+  width: 128px;
   flex: none;
-  padding: 6px 8px;
-  font-size: 10.5px;
+  padding: 7px 9px;
+  font-size: 11.5px;
   appearance: none;
   background-image: none;
 }
@@ -3520,14 +3522,14 @@ body[data-shell="desktop"] .footer-note {
 .code__path {
   flex: 1;
   min-width: 0;
-  padding: 6px 8px;
-  font-size: 10.5px;
+  padding: 7px 9px;
+  font-size: 11.5px;
   font-family: var(--mono);
 }
 
 .code__bar .btn {
-  padding: 6px 9px;
-  font-size: 10.5px;
+  padding: 7px 12px;
+  font-size: 11.5px;
 }
 
 .code__open {
@@ -3544,7 +3546,7 @@ body[data-shell="desktop"] .footer-note {
   flex: 1;
   min-width: 160px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .code__recent {
@@ -3556,27 +3558,63 @@ body[data-shell="desktop"] .footer-note {
 
 .code__editor {
   display: flex;
-  min-height: 150px;
-  max-height: 196px;
+  flex: 1 1 auto;
+  min-height: 288px;
   border-radius: 10px;
   background: #0b0d11;
   border: 1px solid var(--hairline);
   overflow: hidden;
 }
 
+/* The scrolling window for the line numbers, which shadow the textarea. */
+.code__gutter-window {
+  position: relative;
+  width: 42px;
+  flex: none;
+  overflow: hidden;
+  background: #090b0e;
+  border-right: 1px solid var(--hairline);
+}
+
+.code__gutter {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+/* Coloured text sits behind a transparent textarea; both must share metrics. */
+.code__pane {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.code__highlight {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: hidden;
+  background: transparent;
+  color: #cfd5dd;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 19.8px;
+  tab-size: 2;
+  white-space: pre;
+  pointer-events: none;
+}
+
 .code__gutter {
   display: flex;
   flex-direction: column;
-  padding: 8px 6px;
-  min-width: 30px;
+  padding: 10px 8px 10px 4px;
   text-align: right;
-  background: #090b0e;
-  border-right: 1px solid var(--hairline);
   font-family: var(--mono);
-  font-size: 9.5px;
-  line-height: 1.55;
+  font-size: 11px;
+  line-height: 19.8px;
   color: #4a4f57;
-  overflow: hidden;
   user-select: none;
 }
 
@@ -3591,23 +3629,89 @@ body[data-shell="desktop"] .footer-note {
 }
 
 .code__area {
-  flex: 1;
-  padding: 8px 10px;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 10px 12px;
   border: 0;
   outline: none;
   resize: none;
   background: transparent;
-  color: #dfe3e9;
+  color: transparent;
+  caret-color: #e6e8eb;
   font-family: var(--mono);
-  font-size: 10.5px;
-  line-height: 1.55;
+  font-size: 12px;
+  line-height: 19.8px;
   tab-size: 2;
   white-space: pre;
   overflow: auto;
 }
 
 .code__area::selection {
-  background: rgba(230, 232, 235, 0.18);
+  background: rgba(143, 168, 255, 0.28);
+  color: transparent;
+}
+
+.code__area::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.code__area::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.13);
+  border-radius: 99px;
+}
+
+/* ------------------------------------------------------------------ tokens */
+
+.tok-comment {
+  color: #5c6470;
+  font-style: italic;
+}
+
+.tok-string {
+  color: #a8d98a;
+}
+
+.tok-number {
+  color: #e0a878;
+}
+
+.tok-keyword {
+  color: #c3a6ff;
+}
+
+.tok-type {
+  color: #7fc8e8;
+}
+
+.tok-function {
+  color: #8fa8ff;
+}
+
+.tok-operator {
+  color: #9aa3ae;
+}
+
+.tok-punct {
+  color: #6f7681;
+}
+
+.tok-tag {
+  color: #8fa8ff;
+}
+
+.tok-attr {
+  color: #d6b06a;
+}
+
+.tok-property {
+  color: #7fc8e8;
+}
+
+.tok-selector {
+  color: #c3a6ff;
 }
 
 .code__footer {
@@ -3678,7 +3782,9 @@ body[data-shell="desktop"] .footer-note {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 132px;
+  flex: 0 1 auto;
+  max-height: 118px;
+  min-height: 34px;
   overflow: auto;
 }
 

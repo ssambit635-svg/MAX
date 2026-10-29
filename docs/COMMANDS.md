@@ -84,6 +84,9 @@ mixed indentation, `==` → `===` (JavaScript), `var` → `let`, stray `debugger
 `is None`, bare `except:` → `except Exception:`, `0px` → `0`, a missing doctype or `lang`.
 A file with a structural error is never rewritten — MAX names the line and asks you to fix it first.
 
+The editor colours code as you type — keywords, strings, comments, numbers, functions, tags,
+attributes and CSS properties all get their own colour, in every supported language.
+
 `⌘/Ctrl + Enter` checks, `⌘/Ctrl + S` saves. New files are created in your workspace folder
 (`~/Documents/MAX code`); existing files can be opened from anywhere, but system folders,
 hidden files and secret files are refused.

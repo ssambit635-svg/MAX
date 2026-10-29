@@ -12,7 +12,7 @@ const PORT_SEARCH_RANGE = 12;
 let BASE_URL = `http://127.0.0.1:${PREFERRED_PORT}`;
 
 const COLLAPSED = { width: 380, height: 88 };
-const EXPANDED = { width: 692, height: 636 };
+const EXPANDED = { width: 880, height: 744 };
 
 let win = null;
 let tray = null;

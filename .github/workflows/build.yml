@@ -59,6 +59,9 @@ jobs:
       - name: Code engine rules and file guards
         run: npm run test:code
 
+      - name: Editor syntax highlighting
+        run: npm run test:highlight
+
       - name: Smoke-test the local service
         run: |
           node server/index.mjs &
