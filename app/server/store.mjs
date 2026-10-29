@@ -12,6 +12,7 @@ const ACTIVITY_FILE = path.join(STATE_DIR, "activity.json");
 const DEFAULT_CONFIG = {
   version: 1,
   saveDir: path.join(os.homedir(), "Documents", "MAX notes"),
+  codeDir: path.join(os.homedir(), "Documents", "MAX code"),
   github: { username: "", token: "" },
   leetcode: { username: "" },
   render: { apiKey: "" },
@@ -83,6 +84,7 @@ export function saveConfig(patch) {
 export function publicConfig(config = loadConfig()) {
   return {
     saveDir: config.saveDir,
+    codeDir: config.codeDir,
     prefs: config.prefs,
     github: { username: config.github.username, connected: Boolean(config.github.token || config.github.username) },
     leetcode: { username: config.leetcode.username, connected: Boolean(config.leetcode.username) },

@@ -6,6 +6,9 @@ import { APP_ROOT, appendActivity, loadActivity, loadConfig, publicConfig, saveC
 import { appCatalog, handleCommand, recentNotes, saveNote } from "./commands.mjs";
 import { probeApps } from "./apps.mjs";
 import { collectStats, invalidateStats, verifyIntegration } from "./integrations.mjs";
+import { catalog as languageCatalog, detectLanguage, getLanguage } from "./code/languages.mjs";
+import { applyFixes, review } from "./code/engine.mjs";
+import { defaultWorkspace, listWorkspace, readCodeFile, writeCodeFile } from "./code/files.mjs";
 
 const DEFAULT_HOST = process.env.MAX_HOST ?? "0.0.0.0";
 const DEFAULT_PORT = Number(process.env.MAX_API_PORT ?? process.env.PORT ?? 7999);
@@ -134,6 +137,42 @@ async function handleApi(req, res, url) {
   if (route === "GET /api/apps") {
     // Resolve every allowlisted app against this machine so the UI only offers what exists.
     return sendJson(res, 200, { apps: await probeApps() });
+  }
+
+  /* ------------------------------------------------------------------ code */
+
+  if (route === "GET /api/code/meta") {
+    return sendJson(res, 200, {
+      languages: languageCatalog(),
+      workspace: loadConfig().codeDir ?? defaultWorkspace(),
+      files: listWorkspace(loadConfig().codeDir ?? defaultWorkspace()),
+    });
+  }
+
+  if (route === "POST /api/code/review" && req.method === "POST") {
+    const body = await readBody(req);
+    const language = getLanguage(body?.language) ?? detectLanguage(body?.path);
+    return sendJson(res, 200, { ...review(body?.code, language.id), language: language.id });
+  }
+
+  if (route === "POST /api/code/fix" && req.method === "POST") {
+    const body = await readBody(req);
+    const language = getLanguage(body?.language) ?? detectLanguage(body?.path);
+    return sendJson(res, 200, applyFixes(body?.code, language.id));
+  }
+
+  if (route === "POST /api/code/open" && req.method === "POST") {
+    const body = await readBody(req);
+    return sendJson(res, 200, readCodeFile(body?.path, loadConfig().codeDir ?? defaultWorkspace()));
+  }
+
+  if (route === "POST /api/code/save" && req.method === "POST") {
+    const body = await readBody(req);
+    const result = writeCodeFile(body?.path, body?.code, loadConfig().codeDir ?? defaultWorkspace());
+    if (result.ok) {
+      appendActivity({ kind: "command", title: `Saved ${result.name}`, detail: `${result.language} · ${result.size} bytes` });
+    }
+    return sendJson(res, result.ok ? 200 : 400, result);
   }
 
   if (route === "GET /api/stats") {

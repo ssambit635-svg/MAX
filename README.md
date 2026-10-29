@@ -22,7 +22,7 @@ hand-written command table, so MAX is instant, inspectable and predictable.
 
 expand it (click, or ⌘/Ctrl + K)
 ┌────────────────────────────────────────────────────────────────┐
-│ ◕ MAX   now · stats · actions · settings                        │
+│ ◕ MAX   now · code · stats · actions · settings                 │
 ├───────────────────────┬────────────────────────────────────────┤
 │      ◕  (the pet)     │  Right now                             │
 │   in focus / happy    │  ● VS Code · max-companion             │
@@ -33,6 +33,22 @@ expand it (click, or ⌘/Ctrl + K)
 The pet lives **inside the island** and nowhere else — no second window floating over your work.
 It follows your cursor with its eyes, taps back when poked, and naps when you are idle. Drag the
 pill (or the panel header) to move MAX anywhere on screen; a plain click opens it.
+
+### Code that corrects itself
+
+A tiny rule engine lives in the island — no local model, no compiler, no network. Open the
+**Code** tab, paste a file (or open one), and MAX reviews it across 15 languages and fixes the
+things that are safe to fix automatically:
+
+- **errors** — unbalanced brackets, unterminated strings, broken JSON, `gets()`, `DELETE` without `WHERE`
+- **warnings** — `==` on strings in Java, bare `except:`, mutable default arguments, `unwrap()`,
+  empty `catch`, missing `#include`, `<img>` without `alt`
+- **hints** — `var`, `console.log`, `0px`, `!important`, unused imports, long lines, TODOs
+
+Press **Fix** and it applies only behaviour-preserving edits (`==` → `===`, `var` → `let`,
+`== None` → `is None`, whitespace, doctype, `lang`). A file with a structural error is never
+rewritten — MAX names the line and asks you to fix that first.
+
 
 ## The pet
 

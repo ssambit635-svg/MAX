@@ -56,6 +56,9 @@ jobs:
       - name: App allowlist and resolver logic
         run: npm run test:apps
 
+      - name: Code engine rules and file guards
+        run: npm run test:code
+
       - name: Smoke-test the local service
         run: |
           node server/index.mjs &
@@ -73,6 +76,11 @@ jobs:
           curl -sf -X POST http://127.0.0.1:7999/api/notes \
             -H 'content-type: application/json' -d '{"text":"ci smoke test"}'
           curl -sf http://127.0.0.1:7999/api/state > /dev/null
+          curl -sf http://127.0.0.1:7999/api/code/meta
+          curl -sf -X POST http://127.0.0.1:7999/api/code/review \
+            -H 'content-type: application/json' \
+            -d '{"code":"def f():\n    if a == None:\n        pass\n","language":"python"}' \
+            | grep -q py-none-compare
 
   # The Windows installer is the deliverable, so it is built and verified on every push and PR.
   package-windows:

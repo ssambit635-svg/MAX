@@ -62,6 +62,32 @@ _Saved by MAX · 10/28/2026, 9:41 AM_
 remember to push the branch
 ```
 
+## Code
+
+`code` · `lint` · `check code` opens the Code tab.
+
+The editor runs entirely inside the island: no compiler, no local model, no network. It
+reads the file, applies a hand-written rule book, and offers two things — a review, and
+**safe fixes** you can accept or ignore.
+
+| Column | Meaning |
+|---|---|
+| error | the file will not run or compile (unbalanced brackets, broken JSON, `gets()`) |
+| warning | a real bug risk (`==` on strings in Java, bare `except:`, `unwrap()`, `DELETE` without `WHERE`) |
+| hint | style (`var`, trailing spaces, `0px`, unused import) |
+
+Languages: Python, JavaScript, TypeScript, Java, C#, C, C++, Rust, Go, Ruby, Swift, HTML,
+CSS, JSON and SQL — about 50 rules in total.
+
+**Fixes only touch what cannot change behaviour:** trailing whitespace, CRLF, final newline,
+mixed indentation, `==` → `===` (JavaScript), `var` → `let`, stray `debugger`, `== None` →
+`is None`, bare `except:` → `except Exception:`, `0px` → `0`, a missing doctype or `lang`.
+A file with a structural error is never rewritten — MAX names the line and asks you to fix it first.
+
+`⌘/Ctrl + Enter` checks, `⌘/Ctrl + S` saves. New files are created in your workspace folder
+(`~/Documents/MAX code`); existing files can be opened from anywhere, but system folders,
+hidden files and secret files are refused.
+
 ## Focus
 
 - `focus` · `focus 25` · `pomodoro 50` — starts a block (1–180 minutes). The pet switches to

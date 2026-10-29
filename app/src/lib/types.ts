@@ -1,4 +1,4 @@
-export type Tab = "now" | "stats" | "actions" | "settings";
+export type Tab = "now" | "code" | "stats" | "actions" | "settings";
 
 export type Mood =
   | "idle"
@@ -102,6 +102,7 @@ export interface Stats {
 
 export interface PublicConfig {
   saveDir: string;
+  codeDir: string;
   prefs: {
     launchAtLogin: boolean;
     reduceMotion: boolean;
@@ -127,6 +128,58 @@ export interface NoteEntry {
   path: string;
   modified: string;
   size: number;
+}
+
+export type Severity = "error" | "warn" | "info";
+
+export interface CodeIssue {
+  rule: string;
+  severity: Severity;
+  title: string;
+  hint?: string;
+  fixable: boolean;
+  line: number;
+  message: string;
+}
+
+export interface CodeReview {
+  ok: boolean;
+  language: string;
+  score: number;
+  stats: { lines: number; characters: number; errors: number; warnings: number; hints: number };
+  issues: CodeIssue[];
+}
+
+export interface CodeFixResult {
+  ok: boolean;
+  code: string;
+  changed: boolean;
+  message?: string;
+  applied: { rule: string; title: string; count: number }[];
+  review: CodeReview;
+}
+
+export interface CodeFile {
+  ok: boolean;
+  message?: string;
+  path?: string;
+  name?: string;
+  language?: string;
+  code?: string;
+  size?: number;
+  inWorkspace?: boolean;
+}
+
+export interface CodeLanguage {
+  id: string;
+  label: string;
+  extensions: string[];
+}
+
+export interface CodeMeta {
+  languages: CodeLanguage[];
+  workspace: string;
+  files: { name: string; path: string; language: string; size: number; modified: string }[];
 }
 
 export interface AppEntry {
