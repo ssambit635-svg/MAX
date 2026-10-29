@@ -68,6 +68,9 @@ jobs:
       - name: Snippets, project scan and diagnostics
         run: npm run test:tools
 
+      - name: Production gauntlet (hostile input, bad requests, corrupt state)
+        run: npm run test:production
+
       - name: Smoke-test the local service
         run: |
           node server/index.mjs &
@@ -210,6 +213,39 @@ jobs:
           $size = (Get-ChildItem $root -Recurse | Measure-Object Length -Sum).Sum / 1MB
           Say notice ("install layout OK - {0:N1} MB, exe + asar + unpacked service all present" -f $size)
 
+      # The install check proves the files are there. This proves they run.
+      - name: Launch the installed app and talk to it
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\MAX\MAX.exe'
+          if (-not (Test-Path $exe)) { Write-Host "::error::MAX.exe missing, cannot boot it"; exit 1 }
+          $env:MAX_API_PORT = '47311'
+          $proc = Start-Process -FilePath $exe -PassThru
+          $health = $null
+          for ($i = 0; $i -lt 60; $i++) {
+            Start-Sleep -Milliseconds 500
+            try {
+              $health = Invoke-WebRequest -Uri 'http://127.0.0.1:47311/api/health' -UseBasicParsing -TimeoutSec 2
+              if ($health.StatusCode -eq 200) { break }
+            } catch { $health = $null }
+            if ($proc.HasExited) { break }
+          }
+          if (-not $health -or $health.StatusCode -ne 200) {
+            Write-Host "::error::the installed app never answered on /api/health (exit code: $($proc.ExitCode))"
+            Get-Process MAX -ErrorAction SilentlyContinue | Stop-Process -Force
+            exit 1
+          }
+          Write-Host "::notice::installed app booted and served $($health.Content)"
+          $state = Invoke-WebRequest -Uri 'http://127.0.0.1:47311/api/state' -UseBasicParsing -TimeoutSec 15
+          if ($state.Content -notmatch '"config"' -or $state.Content -notmatch '"stats"') {
+            Write-Host "::error::/api/state is missing config or stats"
+            exit 1
+          }
+          $page = Invoke-WebRequest -Uri 'http://127.0.0.1:47311/' -UseBasicParsing -TimeoutSec 10
+          if ($page.StatusCode -ne 200) { Write-Host "::error::the island UI did not load ($($page.StatusCode))"; exit 1 }
+          Write-Host "::notice::ui loaded, $(($state.Content.Length / 1KB)) KB of state, app still alive: $(-not $proc.HasExited)"
+          Get-Process MAX -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 2
       - name: Check the updater feed was produced
         shell: bash
         run: |
@@ -236,6 +272,8 @@ jobs:
               $found = $true
             }
           }
+          Get-Process MAX -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 1
           if (-not $found) { Write-Host "no uninstaller found - nothing to clean" }
 
       - name: Show log on failure

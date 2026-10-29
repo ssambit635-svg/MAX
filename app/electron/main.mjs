@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkForUpdates, initUpdater, installUpdate, stopUpdater, updateStatus } from "./updater.mjs";
+import { COLLAPSED, computeBounds, isOffScreen } from "./bounds.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -12,10 +13,7 @@ const PREFERRED_PORT = Number(process.env.MAX_API_PORT ?? 47199);
 const PORT_SEARCH_RANGE = 12;
 let BASE_URL = `http://127.0.0.1:${PREFERRED_PORT}`;
 
-// The window is a transparent frame that hugs the island: 396px island + 6px of
-// shadow room on each side, and 56px pill + 6px top/bottom.
-const COLLAPSED = { width: 336, height: 64 };
-const EXPANDED = { width: 868, height: 760 };
+// Window sizes and placement live in ./bounds.mjs so they can be tested off-device.
 // When folding, the panel fades, then the island folds, and only then does the
 // frame shrink. A frame that snaps shut under a still-open panel is exactly what
 // made it look stuck before.
@@ -62,19 +60,12 @@ function workAreaFor(point) {
 let pendingResize = null;
 
 function boundsFor(mode, islandHeight) {
-  const base = mode === "expanded" ? EXPANDED : COLLAPSED;
-  // The renderer measures the island, so the frame hugs it instead of leaving a
-  // transparent strip that would still eat clicks.
-  const size = islandHeight ? { ...base, height: Math.max(COLLAPSED.height, islandHeight + 12) } : base;
-  const bounds = win.getBounds();
-  const area = workAreaFor({ x: bounds.x + bounds.width / 2, y: bounds.y + 10 });
-  const width = Math.min(size.width, area.width - 20);
-  const height = Math.min(size.height, area.height - 20);
+  const current = win.getBounds();
+  const area = workAreaFor({ x: current.x + current.width / 2, y: current.y + 10 });
   const saved = readWindowState();
-  const centerX = saved.x ?? bounds.x + bounds.width / 2;
-  const x = Math.round(Math.min(Math.max(area.x + 8, centerX - width / 2), area.x + area.width - width - 8));
-  const top = Math.round(Math.max(area.y + 6, Math.min(saved.y ?? area.y + 8, area.y + area.height - height - 6)));
-  return { x, y: top, width, height };
+  // A monitor that is no longer attached must not drag the island off-screen.
+  const anchor = isOffScreen(saved, area) ? {} : saved;
+  return computeBounds({ mode, area, current, saved: anchor, islandHeight });
 }
 
 /** Frameless windows ignore some resizes while marked non-resizable; this borrows
@@ -204,10 +195,13 @@ function loadErrorPage(title, detail) {
 function createWindow() {
   const saved = readWindowState();
   const area = workAreaFor();
-  const width = COLLAPSED.width;
-  const height = COLLAPSED.height;
-  const x = Math.round(Math.min(Math.max(area.x + 8, (saved.x ?? area.x + area.width / 2) - width / 2), area.x + area.width - width - 8));
-  const y = Math.round(Math.max(area.y + 6, saved.y ?? area.y + 8));
+  const start = computeBounds({
+    mode: "collapsed",
+    area,
+    current: { x: area.x + area.width / 2, y: area.y, width: COLLAPSED.width, height: COLLAPSED.height },
+    saved: isOffScreen(saved, area) ? {} : saved,
+  });
+  const { x, y, width, height } = start;
 
   win = new BrowserWindow({
     width,

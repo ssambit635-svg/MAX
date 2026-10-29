@@ -140,8 +140,8 @@ signed builds is in [`docs/SIGNING.md`](docs/SIGNING.md).
 Every push to `main` builds real installers. Open the Actions tab → the latest **Build MAX** run →
 **Artifacts**, and download either:
 
-- **`MAX-windows-x64`** → `MAX-0.4.2-win-x64.exe` (installer, Start-menu shortcut, optional launch at
-  login) or `MAX-0.4.2-portable.exe` (single file, nothing installed)
+- **`MAX-windows-x64`** → `MAX-0.5.0-win-x64.exe` (installer, Start-menu shortcut, optional launch at
+  login) or `MAX-0.5.0-portable.exe` (single file, nothing installed)
 - `MAX-macos` / `MAX-linux` when those runners succeed
 
 The same job runs on every pull request, so a Windows installer that would not build can never land

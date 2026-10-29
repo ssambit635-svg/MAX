@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { APP_ROOT, appendActivity, loadActivity, loadConfig, publicConfig, saveConfig } from "./store.mjs";
 import { appCatalog, handleCommand, recentNotes, saveNote } from "./commands.mjs";
 import { probeApps } from "./apps.mjs";
-import { collectStats, invalidateStats, verifyIntegration } from "./integrations.mjs";
+import { collectStats, invalidateStats, onStatsUpdated, verifyIntegration } from "./integrations.mjs";
 import { catalog as languageCatalog, detectLanguage, getLanguage } from "./code/languages.mjs";
 import { applyFixes, review } from "./code/engine.mjs";
 import { defaultWorkspace, listWorkspace, readCodeFile, writeCodeFile } from "./code/files.mjs";
@@ -45,6 +45,9 @@ function sendJson(res, status, payload) {
   res.end(body);
 }
 
+// Numbers that finish loading after the island has already drawn arrive here.
+onStatsUpdated((stats) => broadcast("stats", { stats }));
+
 function broadcast(event, payload) {
   const frame = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
   for (const client of clients) {
@@ -56,20 +59,42 @@ function broadcast(event, payload) {
   }
 }
 
+const MAX_BODY_BYTES = Number(process.env.MAX_MAX_BODY ?? 2_000_000);
+
+/** A bad request is the caller's mistake, so it must not look like a crash. */
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function readBody(req) {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 1_000_000) throw new Error("Request body too large");
+    if (size > MAX_BODY_BYTES) {
+      // Stop buffering, but answer before dropping the socket: destroying it first
+      // turns a clear "too big" into a bare network error on the other side.
+      req.pause();
+      const error = new HttpError(413, "That's too much data for one request.");
+      error.closeConnection = true;
+      throw error;
+    }
     chunks.push(chunk);
   }
   if (!chunks.length) return {};
+  let parsed;
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
-    throw new Error("Invalid JSON body");
+    throw new HttpError(400, "That request wasn't valid JSON.");
   }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new HttpError(400, "Expected a JSON object.");
+  }
+  return parsed;
 }
 
 function serveFile(res, file) {
@@ -237,9 +262,16 @@ async function handleApi(req, res, url) {
 
   if (route === "POST /api/notes") {
     const body = await readBody(req);
+    if (body?.text !== undefined && typeof body.text !== "string") {
+      return sendJson(res, 400, { ok: false, message: "A note has to be text." });
+    }
     const text = String(body?.text ?? "").trim();
     if (!text) return sendJson(res, 400, { ok: false, message: "There is nothing to save yet." });
+    if (text.length > 200_000) {
+      return sendJson(res, 413, { ok: false, message: "That note is too long — keep it under 200,000 characters." });
+    }
     const saved = saveNote(text, body?.name ? String(body.name) : undefined);
+    if (!saved.ok) return sendJson(res, 200, { ok: false, message: saved.message, mood: "error" });
     const entry = appendActivity({ kind: "note", title: `Saved ${saved.name}`, detail: text.slice(0, 120) });
     broadcast("activity", { activity: entry });
     broadcast("notes", { notes: recentNotes() });
@@ -305,6 +337,18 @@ async function requestHandler(req, res) {
 
     return serveFile(res, path.join(DIST, "index.html"));
   } catch (error) {
+    // A rejection the caller caused is not a crash: report it as a plain sentence.
+    if (error instanceof HttpError) {
+      if (!res.headersSent) {
+        if (error.closeConnection) res.setHeader("connection", "close");
+        sendJson(res, error.status, { ok: false, message: error.message });
+      } else {
+        res.end();
+      }
+      // A half-read body would keep the parser waiting forever.
+      if (error.closeConnection) setImmediate(() => req.destroy?.());
+      return undefined;
+    }
     console.error("[max] request failed", error);
     // Never leak a stack trace or an internal message to the island.
     if (!res.headersSent) sendJson(res, 500, { ok: false, message: "Something went wrong on my side. Try that again." });
@@ -327,10 +371,13 @@ export function startServer({ port = DEFAULT_PORT, host = DEFAULT_HOST } = {}) {
     const onListening = () => {
       server.removeListener("error", onError);
       server.on("error", (error) => console.error(`[max] service error: ${error.message}`));
-      console.log(`[max] island server on http://${host}:${port}`);
+      // Report the port the OS actually gave us, so port 0 (tests, a busy 7999) works.
+      const bound = server.address();
+      const actualPort = typeof bound === "object" && bound ? bound.port : port;
+      console.log(`[max] island server on http://${host}:${actualPort}`);
       console.log(`[max] ui: ${DIST}`);
       console.log(`[max] notes: ${loadConfig().saveDir}`);
-      resolve({ server, port, close: () => new Promise((done) => server.close(done)) });
+      resolve({ server, port: actualPort, close: () => new Promise((done) => server.close(done)) });
     };
     server.once("error", onError);
     server.once("listening", onListening);

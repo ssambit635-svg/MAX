@@ -7,14 +7,16 @@ import { loadConfig } from "./store.mjs";
 
 const execFileAsync = promisify(execFile);
 const CACHE_MS = 60_000;
+// How long the first request may wait for the network before it gets a placeholder.
+const FIRST_LOAD_BUDGET_MS = Number(process.env.MAX_STATS_BUDGET ?? 1200);
 const cache = new Map();
+let loading = null;
+const statsListeners = new Set();
 
-async function cached(key, loader, ttl = CACHE_MS) {
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < ttl) return hit.value;
-  const value = await loader();
-  cache.set(key, { at: Date.now(), value });
-  return value;
+/** Notified when background numbers land, so the island can update without a reload. */
+export function onStatsUpdated(listener) {
+  statsListeners.add(listener);
+  return () => statsListeners.delete(listener);
 }
 
 async function fetchJson(url, { headers = {}, timeout = 8000, method = "GET", body } = {}) {
@@ -601,13 +603,73 @@ export async function verifyIntegration(provider, input = {}) {
 }
 
 
-export async function collectStats() {
-  return cached("stats", async () => {
-    const [github, leetcode, render, vscode] = await Promise.all([githubStats(), leetcodeStats(), renderStats(), vscodeStats()]);
-    return { at: new Date().toISOString(), github, leetcode, render, vscode, system: systemStats() };
-  });
+async function loadStats() {
+  const [github, leetcode, render, vscode] = await Promise.all([githubStats(), leetcodeStats(), renderStats(), vscodeStats()]);
+  const value = { at: new Date().toISOString(), github, leetcode, render, vscode, system: systemStats() };
+  cache.set("stats", { at: Date.now(), value });
+  for (const listener of statsListeners) {
+    try {
+      listener(value);
+    } catch {
+      /* a listener must never break the refresh */
+    }
+  }
+  return value;
 }
 
+/** Real numbers when the cache is warm; a place to stand in when it is not. */
+function placeholderStats() {
+  return {
+    at: new Date().toISOString(),
+    warming: true,
+    github: { ...DEMO_GITHUB, note: "Reading your GitHub…" },
+    leetcode: { ...DEMO_LEETCODE, note: "Reading your LeetCode…" },
+    render: { ...DEMO_RENDER, note: "Reading your Render…" },
+    vscode: { demo: true, running: false, workspace: "", recent: [] },
+    system: systemStats(),
+  };
+}
+
+function refreshInBackground() {
+  if (!loading) {
+    loading = loadStats()
+      .catch(() => null)
+      .finally(() => {
+        loading = null;
+      });
+  }
+  return loading;
+}
+
+/**
+ * Never make the island wait on someone else's server.
+ *
+ * - warm cache → answer immediately
+ * - stale cache → answer immediately, refresh behind it
+ * - cold cache → wait at most FIRST_LOAD_BUDGET_MS, then answer with a placeholder
+ *   and let the real numbers arrive over the live stream
+ */
+export async function collectStats({ waitMs = FIRST_LOAD_BUDGET_MS } = {}) {
+  const hit = cache.get("stats");
+  if (hit) {
+    if (Date.now() - hit.at >= CACHE_MS) void refreshInBackground();
+    return hit.value;
+  }
+
+  const pending = refreshInBackground();
+  let timer;
+  const deadline = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(placeholderStats()), Math.max(0, waitMs));
+  });
+  try {
+    return await Promise.race([pending.then((value) => value ?? placeholderStats()), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Force a fresh read next time, without dropping what is on screen. */
 export function invalidateStats() {
-  cache.clear();
+  cache.delete("stats");
+  loading = null;
 }

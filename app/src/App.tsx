@@ -203,6 +203,7 @@ export default function App() {
   const sseAlive = useLiveStream({
     onActivity: (activity) => setState((prev) => (prev ? { ...prev, activity } : prev)),
     onNotes: (notes) => setState((prev) => (prev ? { ...prev, notes } : prev)),
+    onStats: (stats) => setState((prev) => (prev ? { ...prev, stats } : prev)),
   });
 
   /* --------------------------------------------------------------- idleness */

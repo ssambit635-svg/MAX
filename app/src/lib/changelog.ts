@@ -14,6 +14,19 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "0.5.0",
+    date: "2026-10-29",
+    title: "Ready for any machine",
+    changes: [
+      "The island opens instantly even when GitHub or LeetCode are slow to answer.",
+      "Works on macOS and Linux for custom apps: any executable, not just .exe files.",
+      "A malformed request now gets a clear answer instead of looking like a crash.",
+      "Notes have to be text, and very long ones are refused politely.",
+      "Window placement is tested against tiny, huge, portrait and multi-monitor screens.",
+      "New release check: 44 production tests plus one that launches the installed app.",
+    ],
+  },
+  {
     version: "0.4.2",
     date: "2026-10-29",
     title: "Smaller island, smoother fold",

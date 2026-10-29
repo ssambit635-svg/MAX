@@ -1,7 +1,7 @@
 {
   "name": "max-companion",
   "productName": "MAX",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "private": true,
   "description": "MAX \u2014 a calm, always-on desktop companion island with a tiny animated pet that runs your small tasks.",
   "license": "MIT",
@@ -19,12 +19,16 @@
     "typecheck": "tsc --noEmit",
     "test:integrations": "node scripts/verify-integrations.test.mjs",
     "test:apps": "node scripts/verify-apps.test.mjs",
-    "test": "npm run test:integrations && npm run test:apps && npm run test:code && npm run test:highlight && npm run test:codebase && npm run test:tools",
+    "test": "npm run test:integrations && npm run test:apps && npm run test:code && npm run test:highlight && npm run test:codebase && npm run test:tools && npm run test:production -- --fast",
     "list:apps": "powershell -ExecutionPolicy Bypass -File scripts/list-apps.ps1",
     "test:code": "node scripts/verify-code-engine.test.mjs",
     "test:highlight": "node scripts/verify-highlight.test.mjs",
     "test:codebase": "node scripts/verify-codebase.test.mjs",
-    "test:tools": "node scripts/verify-tools.test.mjs"
+    "test:tools": "node scripts/verify-tools.test.mjs",
+    "test:production": "node scripts/verify-production.test.mjs",
+    "qa": "npm run typecheck && npm run test:production",
+    "qa:fast": "npm run test:production -- --fast",
+    "qa:loop": "node scripts/qa-loop.mjs"
   },
   "dependencies": {
     "electron-updater": "^6.8.11",
@@ -140,5 +144,8 @@
     "type": "git",
     "url": "https://github.com/ssambit635-svg/MAX.git"
   },
-  "homepage": "https://github.com/ssambit635-svg/MAX"
+  "homepage": "https://github.com/ssambit635-svg/MAX",
+  "engines": {
+    "node": ">=20.0.0"
+  }
 }
