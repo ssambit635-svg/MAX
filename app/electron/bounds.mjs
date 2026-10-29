@@ -98,3 +98,29 @@ export function cleanWindowState(value) {
   }
   return clean;
 }
+
+/**
+ * Dragging must not be able to lose the island. A pet parked entirely past the
+ * right edge of a laptop screen looks like a crash, and with always-on-top there
+ * is no way to find it again — so a drag keeps at least a comfortable strip of
+ * the window inside the work area.
+ */
+export function clampToScreen(bounds, area, keep = 96) {
+  const here = asPoint(bounds);
+  const screenArea = {
+    x: asNumber(area?.x, 0),
+    y: asNumber(area?.y, 0),
+    width: asNumber(area?.width, 1440),
+    height: asNumber(area?.height, 900),
+  };
+  const width = Math.max(0, asNumber(here.width, COLLAPSED.width));
+  const height = Math.max(0, asNumber(here.height, COLLAPSED.height));
+  const visible = Math.max(24, Math.min(keep, width));
+
+  return {
+    x: Math.round(clampToArea(asNumber(here.x, 0), screenArea.x - width + visible, screenArea.x + screenArea.width - visible)),
+    y: Math.round(clampToArea(asNumber(here.y, 0), screenArea.y - height + 24, screenArea.y + screenArea.height - 24)),
+    width,
+    height,
+  };
+}

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkForUpdates, initUpdater, installUpdate, stopUpdater, updateStatus } from "./updater.mjs";
-import { cleanWindowState, COLLAPSED, computeBounds, isOffScreen } from "./bounds.mjs";
+import { clampToScreen, cleanWindowState, COLLAPSED, computeBounds, isOffScreen } from "./bounds.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -27,6 +27,23 @@ let currentMode = "collapsed";
 let serverStarted = false;
 let startupFailure = null;
 let dragOrigin = null;
+
+/** The only hosts the island links to, checked again in the shell. */
+const TRUSTED_LINK_HOSTS = new Set(["github.com", "www.github.com", "leetcode.com", "www.leetcode.com", "render.com", "dashboard.render.com"]);
+
+/** One gate for every way out of the island: the bridge, new windows, navigation. */
+function openTrustedUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(String(url));
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+  if (!TRUSTED_LINK_HOSTS.has(parsed.hostname)) return false;
+  void shell.openExternal(parsed.href);
+  return true;
+}
 
 const stateFile = () => path.join(app.getPath("userData"), "window.json");
 
@@ -250,20 +267,37 @@ function createWindow() {
     win = null;
   });
 
+  // A GPU driver reset or an out-of-memory renderer must not leave a blank,
+  // always-on-top window: reload once, and give up quietly if it keeps happening.
+  let recoveries = [];
+  const recover = (reason) => {
+    const now = Date.now();
+    recoveries = recoveries.filter((at) => now - at < 60_000);
+    recoveries.push(now);
+    if (recoveries.length > 3) return; // a genuinely broken machine: stay put
+    console.warn(`[max] reloading the island after ${reason}`);
+    if (!startupFailure) win?.loadURL(`${BASE_URL}/?shell=desktop`);
+  };
+  win.webContents.on("render-process-gone", (_event, details) => {
+    if (details?.reason === "clean-exit") return;
+    recover(`the renderer stopped (${details?.reason ?? "unknown"})`);
+  });
+  win.on("unresponsive", () => recover("it stopped answering"));
+
   win.on("move", () => {
     const bounds = win?.getBounds();
     if (bounds) writeWindowState({ x: Math.round(bounds.x + bounds.width / 2), y: bounds.y });
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    openTrustedUrl(url);
     return { action: "deny" };
   });
 
   win.webContents.on("will-navigate", (event, url) => {
     if (!url.startsWith(BASE_URL)) {
       event.preventDefault();
-      shell.openExternal(url);
+      openTrustedUrl(url);
     }
   });
 }
@@ -373,10 +407,16 @@ if (!singleInstance) {
     });
 
     ipcMain.on("max:drag-move", (_event, point) => {
-      if (!win || !dragOrigin || typeof point?.screenX !== "number") return;
-      const x = Math.round(dragOrigin.x + (point.screenX - dragOrigin.screenX));
-      const y = Math.round(dragOrigin.y + (point.screenY - dragOrigin.screenY));
-      win.setPosition(x, y, false);
+      if (!win || !dragOrigin || !Number.isFinite(point?.screenX) || !Number.isFinite(point?.screenY)) return;
+      const wanted = {
+        ...win.getBounds(),
+        x: Math.round(dragOrigin.x + (point.screenX - dragOrigin.screenX)),
+        y: Math.round(dragOrigin.y + (point.screenY - dragOrigin.screenY)),
+      };
+      // A drag that leaves the screen must not lose the island for good.
+      const area = workAreaFor({ x: wanted.x + wanted.width / 2, y: wanted.y + 10 });
+      const safe = clampToScreen(wanted, area);
+      win.setPosition(safe.x, safe.y, false);
     });
 
     // The Settings switches are the single source of truth for the OS login item and
@@ -393,12 +433,9 @@ if (!singleInstance) {
     });
 
     ipcMain.on("max:open-external", (_event, url) => {
-      try {
-        const parsed = new URL(String(url));
-        if (parsed.protocol === "https:" || parsed.protocol === "http:") shell.openExternal(parsed.href);
-      } catch {
-        console.warn("[max] refused to open a malformed link");
-      }
+      // Only the places the island itself links to: a renderer that has been
+      // talked into opening something else must not reach the browser.
+      openTrustedUrl(url);
     });
 
     ipcMain.on("max:drag-end", () => {

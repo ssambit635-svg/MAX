@@ -1665,7 +1665,85 @@ await test("a crashing panel cannot blank the island", async () => {
   return problems;
 });
 
-/* ------------------------------------------------------------- 19. hygiene */
+
+/* ================================================================= wave 11 ==
+   A drag must not be able to lose the island, and the shell must not be a general
+   purpose link opener.
+   ========================================================================= */
+
+await test("dragging cannot lose the island off the screen", async () => {
+  const problems = [];
+  const { clampToScreen } = await import("../electron/bounds.mjs");
+  const areas = [
+    { x: 0, y: 0, width: 1440, height: 900 },
+    { x: -1920, y: 0, width: 1920, height: 1080 },
+    { x: 0, y: 0, width: 800, height: 600 },
+  ];
+  const window = { width: 336, height: 64 };
+  for (const area of areas) {
+    for (const [x, y] of [[-5000, 0], [5000, 0], [0, -5000], [0, 5000], [-99999, 99999]]) {
+      const moved = clampToScreen({ ...window, x, y }, area);
+      const horizontal = moved.x + moved.width > area.x + 24 && moved.x < area.x + area.width - 24;
+      const vertical = moved.y + moved.height > area.y + 8 && moved.y < area.y + area.height - 8;
+      if (!horizontal || !vertical) {
+        problems.push(`a drag to ${x},${y} left the island at ${moved.x},${moved.y} on ${area.width}×${area.height}`);
+      }
+    }
+    const inside = clampToScreen({ ...window, x: area.x + 40, y: area.y + 40 }, area);
+    if (inside.x !== area.x + 40 || inside.y !== area.y + 40) problems.push("a normal drag was moved by the clamp");
+  }
+
+  // The shell must use it, and must not let a spread undo the new position.
+  const shell = fs.readFileSync(path.join(APP, "electron/main.mjs"), "utf8");
+  if (!/clampToScreen\(wanted, area\)/.test(shell)) problems.push("dialogs-free dragging no longer clamps");
+  if (/\{\s*x:[^}]*\.\.\.win\.getBounds\(\)/s.test(shell)) problems.push("the drag position is overwritten by getBounds()");
+  return problems;
+});
+
+await test("the shell only opens links the island actually offers", async () => {
+  const problems = [];
+  const shell = fs.readFileSync(path.join(APP, "electron/main.mjs"), "utf8");
+  if (!/TRUSTED_LINK_HOSTS\.has\(parsed\.hostname\)/.test(shell)) problems.push("openExternal accepts any host");
+  const hosts = shell.match(/const TRUSTED_LINK_HOSTS = new Set\(\[([^\]]+)\]\)/)?.[1] ?? "";
+  for (const host of ["github.com", "leetcode.com", "render.com"]) {
+    if (!hosts.includes(`"${host}"`)) problems.push(`${host} is missing from the trusted links`);
+  }
+  if (/"\*"/.test(hosts)) problems.push("the trusted link list is a wildcard");
+
+  // Every host the UI can hand over must be on that list.
+  const ui = read("src/components/SettingsView.tsx");
+  for (const match of ui.matchAll(/openExternal\("(https?:\/\/[^"]+)"/g)) {
+    const name = new URL(match[1]).hostname;
+    if (!hosts.includes(`"${name}"`)) problems.push(`the UI opens ${name}, which the shell would refuse`);
+  }
+  return problems;
+});
+
+
+/* ================================================================= wave 12 ==
+   The renderer is Chromium: it can be killed by a GPU driver reset on a laptop
+   that has never had one before. That must not leave a blank always-on-top box.
+   ========================================================================= */
+
+await test("the island comes back after the renderer dies", async () => {
+  const problems = [];
+  const shell = fs.readFileSync(path.join(APP, "electron/main.mjs"), "utf8");
+  if (!/render-process-gone/.test(shell)) problems.push("a dead renderer is never noticed");
+  if (!/on\("unresponsive"/.test(shell)) problems.push("a frozen renderer is never noticed");
+  if (!/loadURL\(`\$\{BASE_URL\}\/\?shell=desktop`\)/.test(shell)) problems.push("nothing reloads the island");
+  if (!/> 3\) return/.test(shell)) problems.push("there is no limit on reloads — a broken machine would spin");
+
+  // Clean exits are the app closing on purpose, and must not trigger a reload.
+  if (!/clean-exit/.test(shell)) problems.push("an intentional close would be treated as a crash");
+
+  // Every way out of the island goes through one gate.
+  if (!/function openTrustedUrl/.test(shell)) problems.push("there is no single link gate");
+  const direct = shell.match(/shell\.openExternal\(/g) ?? [];
+  if (direct.length !== 1) problems.push(`shell.openExternal is called in ${direct.length} places, not one`);
+  return problems;
+});
+
+/* ------------------------------------------------------------- 21. hygiene */
 
 await test("nothing threw in the background while all of that ran", async () => unhandled.slice(0, 5));
 

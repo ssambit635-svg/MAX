@@ -50,11 +50,14 @@ export function rejectForeignCaller(req, { port } = {}) {
   const bare = host.replace(/^\[|\]$/g, "");
   const allow = trusted();
   const wildcard = allow.has("*");
+  const trustedHost = wildcard || allow.has(bare);
   if (!LOOPBACK_HOSTS.has(host) && !bare.startsWith("127.") && bare !== "::1" && !wildcard && !allow.has(bare)) {
     // A name that is not loopback means something is pretending to be us.
     return "I only answer on this machine.";
   }
-  if (port && req.headers?.host) {
+  // A trusted proxy owns its own port numbers, so only enforce the port for
+  // loopback callers (where a different port means a forwarder in between).
+  if (port && req.headers?.host && !trustedHost) {
     const declared = hostName(req.headers.host);
     const declaredPort = String(req.headers.host).includes(":")
       ? String(req.headers.host).slice(String(req.headers.host).lastIndexOf(":") + 1)
