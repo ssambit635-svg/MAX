@@ -190,6 +190,38 @@ check("every API route the UI calls exists on the server", () => {
   return problems;
 });
 
+/* ------------------------------------------------ 8. window/panel sync -- */
+
+// The stuck-island bug: main resized the window on its own while the renderer
+// still drew an open panel, so the tabs squeezed and never closed. The window may
+// only be sized on the renderer's signal (and once at startup).
+check("the window is only resized when the island says so", () => {
+  const main = read(path.join(APP, "electron/main.mjs"));
+  const calls = main
+    .split("\n")
+    .map((line, index) => ({ line: line.trim(), number: index + 1 }))
+    .filter((entry) => entry.line.includes("applyMode(") && !entry.line.startsWith("function applyMode"));
+
+  // Allowed: the startup fold, and the one IPC handler that relays the island's
+  // own request. Everything else would be main guessing.
+  const allowed = (line) => line.startsWith("if (!startupFailure) applyMode(") || line.startsWith("applyMode(mode, ");
+
+  return calls.filter((entry) => !allowed(entry.line)).map((entry) => `main.mjs:${entry.number} resizes the window behind the renderer: ${entry.line}`);
+});
+
+check("the panel starts folded and only opens through its own state", () => {
+  const css = read(path.join(APP, "src/styles.css"));
+  const problems = [];
+  if (!/\.panel \{[^}]*grid-template-rows: 0fr/.test(css)) problems.push(".panel must start at 0fr");
+  if (!/\.island\[data-panel="in"\] \.panel \{[^}]*grid-template-rows: 1fr/.test(css)) {
+    problems.push('the open state must be keyed on [data-panel="in"]');
+  }
+  if (/\.island\[data-expanded="true"\] \.pill \{\s*display: none/.test(css)) {
+    problems.push("the pill must fold, not vanish (display:none makes the open snap)");
+  }
+  return problems;
+});
+
 if (failures) {
   console.log(`\n${failures} housekeeping check(s) failed`);
   process.exit(1);

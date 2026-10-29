@@ -14,6 +14,18 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "0.4.1",
+    date: "2026-10-29",
+    title: "The island opens like it should",
+    changes: [
+      "Opening and closing no longer gets stuck half-way.",
+      "The island springs open into a window that already fits it, instead of a window stuttering open around it.",
+      "Closing folds the panel first, so the tabs are never squeezed.",
+      "The pet morphs into the panel instead of vanishing.",
+      "No invisible strip under the panel swallowing clicks any more.",
+    ],
+  },
+  {
     version: "0.4.0",
     date: "2026-10-29",
     title: "Folder scans, snippets and updates",

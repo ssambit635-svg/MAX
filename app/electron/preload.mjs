@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 contextBridge.exposeInMainWorld("maxShell", {
   isDesktop: true,
   platform: process.platform,
-  setMode: (mode) => ipcRenderer.send("max:mode", mode),
+  setMode: (mode, height) => ipcRenderer.send("max:mode", { mode, height }),
   quit: () => ipcRenderer.send("max:quit"),
   dragBegin: (screenX, screenY) => ipcRenderer.send("max:drag-begin", { screenX, screenY }),
   dragMove: (screenX, screenY) => ipcRenderer.send("max:drag-move", { screenX, screenY }),
