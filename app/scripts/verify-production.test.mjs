@@ -1743,7 +1743,40 @@ await test("the island comes back after the renderer dies", async () => {
   return problems;
 });
 
-/* ------------------------------------------------------------- 21. hygiene */
+
+/* ================================================================= wave 13 ==
+   The suggestion list is a promise. Offering a command the app cannot understand
+   is worse than offering nothing, so every one of them is run before shipping.
+   ========================================================================= */
+
+await test("every command the island suggests actually works", async () => {
+  const problems = [];
+  const { handleCommand } = await import("../server/commands.mjs");
+  const source = read("src/lib/commands.ts");
+  const suggestions = [...source.matchAll(/\{ cmd: "([^"]+)"/g)].map((match) => match[1]);
+  if (suggestions.length < 15) return [`only found ${suggestions.length} suggestions`];
+
+  for (const suggestion of suggestions) {
+    const spoken = suggestion.replace("<text>", "hello").replace(/<[^>]+>/g, "x");
+    const result = await handleCommand(spoken);
+    if (!result || typeof result.message !== "string" || !result.message.trim()) {
+      problems.push(`${suggestion} → empty answer`);
+      continue;
+    }
+    if (/didn'?t (catch|get)|not sure|i don'?t know|didn'?t understand/i.test(result.message)) {
+      problems.push(`${suggestion} → "${result.message.slice(0, 70)}"`);
+    }
+  }
+
+  // The documented aliases must land on the same app, case and spacing included.
+  for (const spoken of ["open notepad", "OPEN NOTEPAD", "  open   notepad  ", "Open NotePad"]) {
+    const result = await handleCommand(spoken);
+    if (/didn'?t/i.test(result.message)) problems.push(`${JSON.stringify(spoken)} was not understood`);
+  }
+  return problems;
+});
+
+/* ------------------------------------------------------------- 22. hygiene */
 
 await test("nothing threw in the background while all of that ran", async () => unhandled.slice(0, 5));
 
