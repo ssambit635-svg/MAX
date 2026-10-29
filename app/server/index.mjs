@@ -12,7 +12,7 @@ import { applyFixes, review } from "./code/engine.mjs";
 import { defaultWorkspace, listWorkspace, readCodeFile, writeCodeFile } from "./code/files.mjs";
 import { scanProject } from "./code/project.mjs";
 import { deleteSnippet, findSnippet, saveSnippet, snippetIndex } from "./snippets.mjs";
-import { clearLog, diagnosticsSummary, logEvent, readLog } from "./diagnostics.mjs";
+import { clearLog, diagnosticsSummary, logEvent, readLog, redact } from "./diagnostics.mjs";
 
 // Loopback by default: an island on a café Wi-Fi must not be reachable from the
 // next table. Anything wider has to be asked for explicitly (a dev preview).
@@ -227,6 +227,17 @@ async function handleApi(req, res, url) {
       summary: diagnosticsSummary({ config: loadConfig(), stats: await collectStats() }),
       log: readLog(40),
     });
+  }
+
+  if (route === "POST /api/diagnostics/report" && req.method === "POST") {
+    // A panel crashed in the renderer. The message is redacted before it is
+    // written, because it can quote a path or a token from a stack trace.
+    const body = await readBody(req);
+    const message = typeof body?.message === "string" ? body.message.slice(0, 300) : "";
+    const detail = typeof body?.detail === "string" ? body.detail.slice(0, 1200) : "";
+    if (!message) return sendJson(res, 400, { ok: false, message: "Nothing to report." });
+    logEvent("error", `panel failed: ${redact(message)}`, { detail: redact(detail) });
+    return sendJson(res, 200, { ok: true });
   }
 
   if (route === "POST /api/diagnostics/clear" && req.method === "POST") {

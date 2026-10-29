@@ -604,8 +604,12 @@ export async function verifyIntegration(provider, input = {}) {
 
 
 async function loadStats() {
+  const generationAtStart = generation;
   const [github, leetcode, render, vscode] = await Promise.all([githubStats(), leetcodeStats(), renderStats(), vscodeStats()]);
-  const value = { at: new Date().toISOString(), github, leetcode, render, vscode, system: systemStats() };
+  // `warming: false` keeps the shape identical to the placeholder, so the UI
+  // never has to guess which one it is looking at.
+  const value = { at: new Date().toISOString(), warming: false, github, leetcode, render, vscode, system: systemStats() };
+  if (generationAtStart !== generation) return value; // settings changed mid-flight
   cache.set("stats", { at: Date.now(), value });
   for (const listener of statsListeners) {
     try {
@@ -629,6 +633,11 @@ function placeholderStats() {
     system: systemStats(),
   };
 }
+
+// Bumped whenever the answers can no longer be trusted (a token was removed, a
+// handle changed). A load that started before the change is not allowed to fill
+// the cache when it lands.
+let generation = 0;
 
 function refreshInBackground() {
   if (!loading) {
@@ -670,6 +679,8 @@ export async function collectStats({ waitMs = FIRST_LOAD_BUDGET_MS } = {}) {
 
 /** Force a fresh read next time, without dropping what is on screen. */
 export function invalidateStats() {
+  generation += 1;
   cache.delete("stats");
-  loading = null;
+  // A read that is already in flight belongs to the old settings: it is not
+  // cached and not broadcast when it lands, but it is not duplicated either.
 }

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkForUpdates, initUpdater, installUpdate, stopUpdater, updateStatus } from "./updater.mjs";
-import { COLLAPSED, computeBounds, isOffScreen } from "./bounds.mjs";
+import { cleanWindowState, COLLAPSED, computeBounds, isOffScreen } from "./bounds.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -30,9 +30,14 @@ let dragOrigin = null;
 
 const stateFile = () => path.join(app.getPath("userData"), "window.json");
 
+/**
+ * window.json is written while the app runs, so a crash can leave half a file
+ * behind. cleanWindowState turns whatever survived into numbers that can place
+ * a window — a `null` here used to stop the island from opening at all.
+ */
 function readWindowState() {
   try {
-    return JSON.parse(fs.readFileSync(stateFile(), "utf8"));
+    return cleanWindowState(JSON.parse(fs.readFileSync(stateFile(), "utf8")));
   } catch {
     return {};
   }

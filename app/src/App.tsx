@@ -5,6 +5,7 @@ import { StatsView } from "./components/StatsView";
 import { ActionsView } from "./components/ActionsView";
 import { CodeView } from "./components/CodeView";
 import { SettingsView } from "./components/SettingsView";
+import { Boundary } from "./components/Boundary";
 import { StarterCard } from "./components/StarterCard";
 import { api } from "./lib/api";
 import { filterSuggestions, type Suggestion } from "./lib/commands";
@@ -590,6 +591,7 @@ export default function App() {
               </div>
 
               <div className="panel__body">
+                <Boundary label={tab}>
                 {tab === "now" && !starterHidden && state.activity.length === 0 && (
                   <StarterCard
                     state={state}
@@ -652,6 +654,7 @@ export default function App() {
                     onNotice={showToast}
                   />
                 )}
+                </Boundary>
               </div>
 
               <form

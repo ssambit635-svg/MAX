@@ -1386,7 +1386,286 @@ await test("two hundred writes at once all land", async () => {
   return problems;
 });
 
-/* ------------------------------------------------------------- 15. hygiene */
+
+/* ================================================================== wave 7 ==
+   The window is placed from a file the user can edit and a crash can truncate.
+   A `null` in window.json used to stop the island from opening at all.
+   ========================================================================= */
+
+await test("a broken window.json cannot stop the island opening", async () => {
+  const problems = [];
+  const { cleanWindowState, computeBounds } = await import("../electron/bounds.mjs");
+  const area = { x: 0, y: 0, width: 1440, height: 900 };
+  const current = { x: 200, y: 20, width: 336, height: 64 };
+
+  for (const stored of [null, "text", 42, [], {}, { x: "1", y: null }, { x: NaN, y: Infinity }]) {
+    const saved = cleanWindowState(stored);
+    if (saved === null || typeof saved !== "object" || Array.isArray(saved)) {
+      problems.push(`cleanWindowState(${JSON.stringify(stored)}) returned ${JSON.stringify(saved)}`);
+      continue;
+    }
+    for (const mode of ["collapsed", "expanded"]) {
+      const bounds = computeBounds({ mode, area, current, saved, islandHeight: 520 });
+      for (const key of ["x", "y", "width", "height"]) {
+        if (!Number.isFinite(bounds[key])) problems.push(`${mode} produced ${key}=${bounds[key]} from ${JSON.stringify(stored)}`);
+      }
+      if (bounds.width > area.width || bounds.height > area.height) problems.push(`${mode} is bigger than the screen`);
+      if (bounds.x < area.x - 1 || bounds.y < area.y - 1) problems.push(`${mode} escaped the work area`);
+      if (bounds.x + bounds.width > area.x + area.width + 1) problems.push(`${mode} hangs off the right edge`);
+    }
+  }
+
+  // The shell itself must not trust the file either.
+  const shell = fs.readFileSync(path.join(APP, "electron/main.mjs"), "utf8");
+  if (!/cleanWindowState\(/.test(shell)) problems.push("main.mjs no longer cleans window.json before using it");
+  if (!/cleanWindowState\(JSON\.parse/.test(shell)) problems.push("main.mjs parses window.json without cleaning it");
+  return problems;
+});
+
+await test("geometry stays sane for any screen, including broken ones", async () => {
+  const problems = [];
+  const { computeBounds } = await import("../electron/bounds.mjs");
+  const screens = [
+    undefined,
+    null,
+    { x: 0, y: 0, width: 0, height: 0 },
+    { x: NaN, y: NaN, width: NaN, height: NaN },
+    { x: -1920, y: -200, width: 1920, height: 1080 },
+    { x: 0, y: 0, width: 7680, height: 2160 },
+    { x: 0, y: 0, width: 1024, height: 600 },
+  ];
+  const heights = [undefined, null, 0, -50, "tall", 1e9, 520, 120.6];
+  for (const area of screens) {
+    for (const islandHeight of heights) {
+      for (const mode of ["collapsed", "expanded"]) {
+        let bounds;
+        try {
+          bounds = computeBounds({ mode, area, current: { x: 0, y: 0, width: 336, height: 64 }, saved: {}, islandHeight });
+        } catch (error) {
+          problems.push(`threw for area ${JSON.stringify(area)} height ${String(islandHeight)}: ${error.message}`);
+          continue;
+        }
+        for (const key of ["x", "y", "width", "height"]) {
+          if (!Number.isFinite(bounds[key])) problems.push(`${key} is ${bounds[key]} for area ${JSON.stringify(area)}`);
+        }
+        if (bounds.width < 120 || bounds.height < 48) problems.push(`the window shrank to ${bounds.width}×${bounds.height}`);
+        if (islandHeight === 520 && mode === "expanded" && area?.width >= 900 && bounds.height < 520) {
+          problems.push("the open island is shorter than the panel it holds");
+        }
+      }
+    }
+  }
+  return problems;
+});
+
+
+/* ================================================================== wave 8 ==
+   The bundle a user downloads has to work with the network unplugged, and every
+   file in it has to parse on the machine that runs it.
+   ========================================================================= */
+
+await test("every server and shell file parses on its own", async () => {
+  const problems = [];
+  const { spawnSync } = await import("node:child_process");
+  const files = [];
+  for (const folder of ["server", "electron", "scripts"]) {
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(mjs|cjs|js)$/.test(entry.name)) files.push(full);
+      }
+    };
+    walk(path.join(APP, folder));
+  }
+  for (const file of files) {
+    const result = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
+    if (result.status !== 0) problems.push(`${path.relative(APP, file)}: ${(result.stderr || "").split("\n")[4] ?? "syntax error"}`);
+  }
+  if (files.length < 20) problems.push(`only found ${files.length} source files — the walk is broken`);
+  return problems;
+});
+
+await test("every server module imports cleanly in a fresh process", async () => {
+  const problems = [];
+  const { spawnSync } = await import("node:child_process");
+  const modules = fs
+    .readdirSync(path.join(APP, "server"), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".mjs"))
+    .map((entry) => path.join(APP, "server", entry.name));
+  for (const module of modules) {
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", `await import(${JSON.stringify(module)});`], {
+      encoding: "utf8",
+      env: { ...process.env, MAX_STATE_DIR: path.join(SANDBOX, "import-probe") },
+      timeout: 20_000,
+    });
+    if (result.status !== 0) {
+      const line = (result.stderr || "").split("\n").find((text) => /Error/.test(text)) ?? "failed";
+      problems.push(`${path.basename(module)}: ${line.slice(0, 120)}`);
+    }
+  }
+  return problems;
+});
+
+await test("the built island works with the network unplugged", async () => {
+  const problems = [];
+  const dist = path.join(APP, "dist");
+  if (!fs.existsSync(dist)) return ["dist is missing — run npm run build"];
+  const files = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else files.push(full);
+    }
+  };
+  walk(dist);
+
+  let bytes = 0;
+  for (const file of files) {
+    bytes += fs.statSync(file).size;
+    if (!/\.(html|css|js|mjs)$/.test(file)) continue;
+    const text = fs.readFileSync(file, "utf8");
+    // A link in a string is fine (the shell opens it in the browser). What would
+    // break on a plane is the page *fetching* something: a script, a stylesheet,
+    // a font, an image, or a request of its own.
+    const remote = [
+      /<script[^>]+src=["']https?:/i,
+      /<link[^>]+href=["']https?:/i,
+      /<img[^>]+src=["']https?:/i,
+      /url\(\s*["']?https?:/i,
+      /@import\s+(url\()?["']?https?:/i,
+      /fetch\(\s*["'`]https?:/i,
+      /new\s+WebSocket\(\s*["'`]wss?:/i,
+      /XMLHttpRequest[\s\S]{0,120}open\([^)]*https?:/i,
+    ];
+    for (const pattern of remote) {
+      if (pattern.test(text)) problems.push(`${path.relative(dist, file)} fetches something remote (${pattern.source.slice(0, 28)}…)`);
+    }
+  }
+
+  const megabytes = bytes / (1024 * 1024);
+  if (megabytes > 3) problems.push(`the built island is ${megabytes.toFixed(1)} MB`);
+  const html = fs.readFileSync(path.join(dist, "index.html"), "utf8");
+  if (!/lang=/.test(html)) problems.push("index.html declares no language");
+  if (!/<meta[^>]+viewport/.test(html)) problems.push("index.html has no viewport meta");
+  if (/<script[^>]+src="http/.test(html)) problems.push("index.html loads a script from the internet");
+  return problems;
+});
+
+
+/* ================================================================== wave 9 ==
+   The island shows placeholder numbers first and real ones later. Both must have
+   the same shape, or the UI flips between layouts while the user watches.
+   ========================================================================= */
+
+const shapeOf = (value) => {
+  if (Array.isArray(value)) return `[${value.length ? shapeOf(value[0]) : ""}]`;
+  if (!value || typeof value !== "object") return typeof value;
+  return `{${Object.keys(value).sort().join(",")}}`;
+};
+
+await test("the placeholder and the real stats agree on their shape", async () => {
+  const problems = [];
+  const source = fs.readFileSync(path.join(APP, "server/integrations.mjs"), "utf8");
+
+  // Both objects come from the same module; compare them through the API instead
+  // of reaching into private helpers.
+  const cold = await call("GET", "/api/state");
+  const coldStats = cold.json?.stats;
+  if (!coldStats) return ["/api/state returned no stats at all"];
+
+  const expected = ["github", "leetcode", "render", "vscode", "system"];
+  for (const key of expected) {
+    if (!coldStats[key]) problems.push(`stats.${key} is missing`);
+  }
+  for (const key of expected) {
+    const demo = coldStats[key];
+    if (key === "system") continue;
+    if (!("demo" in demo) && key !== "vscode") problems.push(`stats.${key} has no demo flag`);
+  }
+
+  // `warming` must exist on both paths, so the UI can always read it.
+  if (typeof coldStats.warming !== "boolean") problems.push(`warming is ${typeof coldStats.warming}`);
+  if (!/warming: false/.test(source)) problems.push("the real stats do not declare warming: false");
+
+  // Key parity between the placeholder and the warm value, straight from source.
+  const demoBlocks = [...source.matchAll(/const DEMO_(GITHUB|LEETCODE|RENDER) = \{([\s\S]*?)\n\};/g)];
+  if (demoBlocks.length < 3) problems.push("could not find the placeholder shapes in source");
+  // The warm path is what the island shows afterwards, so compare against that.
+  const { collectStats } = await import("../server/integrations.mjs");
+  await collectStats({ waitMs: 400 });
+  const warm = await collectStats({ waitMs: 400 });
+  const liveShapes = {
+    github: warm?.github,
+    leetcode: warm?.leetcode,
+    render: warm?.render,
+  };
+  for (const [, name, body] of demoBlocks) {
+    const placeholderKeys = [...body.matchAll(/^\s{2}(\w+):/gm)].map((match) => match[1]).sort();
+    const live = liveShapes[name.toLowerCase()];
+    const liveKeys = Object.keys(live ?? {}).sort();
+    const missing = placeholderKeys.filter((key) => !liveKeys.includes(key));
+    if (missing.length) problems.push(`DEMO_${name} has ${missing.join(", ")} but the live object does not`);
+  }
+  return problems;
+});
+
+await test("removing a token never keeps showing its numbers", async () => {
+  const problems = [];
+  const { collectStats, invalidateStats } = await import("../server/integrations.mjs");
+  const { saveConfig } = await import("../server/store.mjs");
+
+  saveConfig({ github: { username: "ssambit635-svg", token: "ghp_fake_token_for_the_test" } });
+  const first = await collectStats({ waitMs: 200 });
+  if (!first?.github) problems.push("no github block at all");
+
+  // Disconnecting must not serve the previous answer from cache.
+  saveConfig({ github: { username: "", token: "" } });
+  invalidateStats();
+  const after = await collectStats({ waitMs: 200 });
+  if (after?.github?.login === "ssambit635-svg" && first?.github?.login === "ssambit635-svg") {
+    problems.push("the old login survived a disconnect");
+  }
+  if (after?.warming !== undefined && typeof after.warming !== "boolean") problems.push("warming is not a boolean");
+
+  // A read that started before the change must not fill the cache afterwards.
+  const source = fs.readFileSync(path.join(APP, "server/integrations.mjs"), "utf8");
+  if (!/generationAtStart !== generation/.test(source)) problems.push("an in-flight stats read can still overwrite newer settings");
+  return problems;
+});
+
+
+/* ================================================================= wave 10 ==
+   One bad value in one tab must never cost the user the whole pet.
+   ========================================================================= */
+
+await test("a crashing panel cannot blank the island", async () => {
+  const problems = [];
+  const boundary = fs.readFileSync(path.join(APP, "src/components/Boundary.tsx"), "utf8");
+  const app = fs.readFileSync(path.join(APP, "src/App.tsx"), "utf8");
+
+  if (!/getDerivedStateFromError/.test(boundary)) problems.push("the boundary has no getDerivedStateFromError");
+  if (!/componentDidCatch/.test(boundary)) problems.push("the boundary does not report the failure");
+  if (!/<Boundary/.test(app)) problems.push("the panel is not wrapped in a boundary");
+  if (!/onClick=\{\(\) => this\.setState\(\{ failed: false \}\)\}/.test(boundary)) problems.push("there is no way back from the failure");
+
+  // The report route exists and refuses an empty report.
+  const ok = await call("POST", "/api/diagnostics/report", { message: "panel failed: TypeError: x is undefined", detail: "at StatsView" });
+  if (ok.status !== 200 || !ok.json?.ok) problems.push(`the report route answered ${ok.status}`);
+  const empty = await call("POST", "/api/diagnostics/report", { message: "" });
+  if (empty.status !== 400) problems.push(`an empty report answered ${empty.status}`);
+
+  // Redaction is applied, so a token quoted in a stack trace never lands in the log.
+  await call("POST", "/api/diagnostics/report", { message: "boom ghp_secretTokenValue123 /home/someone/Documents/x" });
+  const diagnostics = await call("GET", "/api/diagnostics");
+  const text = JSON.stringify(diagnostics.json ?? {});
+  if (/ghp_secretTokenValue123/.test(text)) problems.push("a token written in a report survived into the log");
+  if (!/panel failed/.test(text)) problems.push("the report never reached the log");
+  return problems;
+});
+
+/* ------------------------------------------------------------- 19. hygiene */
 
 await test("nothing threw in the background while all of that ran", async () => unhandled.slice(0, 5));
 
