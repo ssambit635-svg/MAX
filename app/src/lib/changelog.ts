@@ -14,6 +14,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "0.4.2",
+    date: "2026-10-29",
+    title: "Smaller island, smoother fold",
+    changes: [
+      "Dragging works again — a leftover call from the old animation code was crashing the window.",
+      "The island rests smaller, so it takes less of the screen.",
+      "Opening and closing are one gesture each: the shape moves, then the content follows.",
+      "Closing glides with no bounce; opening settles with a small one.",
+    ],
+  },
+  {
     version: "0.4.1",
     date: "2026-10-29",
     title: "The island opens like it should",

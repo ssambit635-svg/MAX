@@ -5,17 +5,22 @@ How this works: I give you a **set** of steps, you test them and reply `checked`
 
 Legend: ✅ works · ❌ broken · ⚠️ works but feels wrong (say what feels wrong)
 
-**Progress (0.4.1):** A, B and C are verified — install, tests, island open/close (after the rebuild in
+**Progress (0.4.2):** A, B, C and D are verified — install, tests, island open/close (after the rebuild in
 PR #15), tray, hotkey, every pet mood, palette, toasts, real app launching, notes and the focus timer.
-Next up: D (stats) → E (code tab) → F (new tools) → G (updates/diagnostics) → H (settings) →
+Next up: E (code tab) → F (new tools) → G (updates/diagnostics) → H (settings) →
 I (motion/a11y) → J (packaging).
+
+**0.4.2 fixes a crash found while testing D:** dragging threw `cancelTween is not defined`
+(a call site left behind by the 0.4.1 rewrite). `test:codebase` now parses the backend and the
+main process and fails if anything calls a function that does not exist, so a rename can never
+take the app down again.
 
 | Set | Covers | Steps | Status |
 | --- | --- | --- | --- |
 | A | Foundation: install, tests, app opens, island, tray | A1–A5 | ✅ checked |
 | B | The pet: moods, palette, keyboard, toasts | B1–B5 | ✅ checked |
 | C | Real tasks: open/close apps, notes, focus timer | C1–C5 | ✅ checked |
-| D | Stats: GitHub, LeetCode, Render, VS Code, bad handles | D1–D6 | ⬜ |
+| D | Stats: GitHub, LeetCode, Render, VS Code, bad handles | D1–D6 | ✅ checked |
 | E | Code tab: review, fix, edit/save, colours, `check`, scan | E1–E7 | ⬜ |
 | F | New tools: snippets, custom apps, refusals | F1–F4 | ⬜ |
 | G | Updates, diagnostics, What's new, language | G1–G6 | ⬜ |

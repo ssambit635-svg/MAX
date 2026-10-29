@@ -14,12 +14,12 @@ let BASE_URL = `http://127.0.0.1:${PREFERRED_PORT}`;
 
 // The window is a transparent frame that hugs the island: 396px island + 6px of
 // shadow room on each side, and 56px pill + 6px top/bottom.
-const COLLAPSED = { width: 408, height: 64 };
+const COLLAPSED = { width: 336, height: 64 };
 const EXPANDED = { width: 868, height: 760 };
 // When folding, the panel fades, then the island folds, and only then does the
 // frame shrink. A frame that snaps shut under a still-open panel is exactly what
 // made it look stuck before.
-const COLLAPSE_DELAY_MS = 560;
+const COLLAPSE_DELAY_MS = 470;
 
 let win = null;
 let tray = null;
@@ -366,7 +366,8 @@ if (!singleInstance) {
 
     // Manual dragging: `-webkit-app-region: drag` would swallow the clicks that open the island.
     ipcMain.on("max:drag-begin", (_event, point) => {
-      cancelTween();
+      // A pending fold would move the window mid-drag, so drop it first.
+      cancelPendingResize();
       if (!win || typeof point?.screenX !== "number") return;
       const bounds = win.getBounds();
       dragOrigin = { screenX: point.screenX, screenY: point.screenY, x: bounds.x, y: bounds.y };
