@@ -562,7 +562,13 @@ export default function App() {
                     onConnect={() => setTab("settings")}
                   />
                 )}
-                {tab === "actions" && <ActionsView apps={state.apps} onRun={(command) => void runCommand(command)} />}
+                {tab === "actions" && (
+                  <ActionsView
+                    apps={state.apps}
+                    onRun={(command) => void runCommand(command)}
+                    onNotice={showToast}
+                  />
+                )}
                 {tab === "settings" && (
                   <SettingsView
                     config={state.config}

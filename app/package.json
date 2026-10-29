@@ -1,7 +1,7 @@
 {
   "name": "max-companion",
   "productName": "MAX",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "description": "MAX \u2014 a calm, always-on desktop companion island with a tiny animated pet that runs your small tasks.",
   "license": "MIT",
@@ -19,7 +19,8 @@
     "typecheck": "tsc --noEmit",
     "test:integrations": "node scripts/verify-integrations.test.mjs",
     "test:apps": "node scripts/verify-apps.test.mjs",
-    "test": "npm run test:integrations && npm run test:apps"
+    "test": "npm run test:integrations && npm run test:apps",
+    "list:apps": "powershell -ExecutionPolicy Bypass -File scripts/list-apps.ps1"
   },
   "dependencies": {
     "react": "^18.3.1",

@@ -160,3 +160,15 @@ cloud model. Tray → **Open settings folder** jumps straight there.
 3. Whether the Stats cards said **DEMO** or live numbers.
 4. For a hard crash: tray → **Open settings folder** and grab anything in there, plus reproduce it
    once from the portable exe so we know it is not the install location.
+
+## If an app won't open
+
+Chrome and Edge are not on `PATH` on a normal Windows install, so MAX looks for them in
+Program Files, in the registry, then the Start menu. If an app is still missing:
+
+1. Open the **Actions** tab.
+2. Click **my app isn't listed →**.
+3. Copy the command, paste it in PowerShell, press Enter.
+4. It writes `max-apps.txt` to your Desktop and opens it — that is the full list of apps on this laptop.
+5. Keep the file (send it over if you want the app table matched to this exact machine), install
+   what was missing, then press **scan again** in Actions.
