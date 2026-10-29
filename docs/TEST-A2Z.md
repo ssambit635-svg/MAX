@@ -5,11 +5,16 @@ How this works: I give you a **set** of steps, you test them and reply `checked`
 
 Legend: ✅ works · ❌ broken · ⚠️ works but feels wrong (say what feels wrong)
 
+**Progress (0.4.1):** A, B and C are verified — install, tests, island open/close (after the rebuild in
+PR #15), tray, hotkey, every pet mood, palette, toasts, real app launching, notes and the focus timer.
+Next up: D (stats) → E (code tab) → F (new tools) → G (updates/diagnostics) → H (settings) →
+I (motion/a11y) → J (packaging).
+
 | Set | Covers | Steps | Status |
 | --- | --- | --- | --- |
-| A | Foundation: install, tests, app opens, island, tray | A1–A5 | ⬜ |
-| B | The pet: moods, palette, keyboard, toasts | B1–B4 | ⬜ |
-| C | Real tasks: open/close apps, notes, focus timer | C1–C5 | ⬜ |
+| A | Foundation: install, tests, app opens, island, tray | A1–A5 | ✅ checked |
+| B | The pet: moods, palette, keyboard, toasts | B1–B5 | ✅ checked |
+| C | Real tasks: open/close apps, notes, focus timer | C1–C5 | ✅ checked |
 | D | Stats: GitHub, LeetCode, Render, VS Code, bad handles | D1–D6 | ⬜ |
 | E | Code tab: review, fix, edit/save, colours, `check`, scan | E1–E7 | ⬜ |
 | F | New tools: snippets, custom apps, refusals | F1–F4 | ⬜ |
