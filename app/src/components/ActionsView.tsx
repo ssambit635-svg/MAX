@@ -12,11 +12,12 @@ interface ActionsViewProps {
 const SCAN_COMMAND =
   "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Get-StartApps | Sort-Object Name | ForEach-Object { $_.Name } | Out-File \\\"$env:USERPROFILE\\Desktop\\max-apps.txt\\\" -Encoding utf8; Get-ItemProperty 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Where-Object DisplayName | ForEach-Object { $_.DisplayName } | Sort-Object -Unique | Out-File \\\"$env:USERPROFILE\\Desktop\\max-apps.txt\\\" -Append -Encoding utf8; notepad \\\"$env:USERPROFILE\\Desktop\\max-apps.txt\\\"\"";
 
+/** Friendly words only — no paths, no registry, no process names. */
 const HOW_LABEL: Record<string, string> = {
-  exe: "its executable",
-  appx: "the Start menu (Microsoft Store app)",
-  protocol: "its system link",
-  "default-browser": "your default browser",
+  exe: "Installed app",
+  appx: "Microsoft Store app",
+  protocol: "Windows app",
+  "default-browser": "Your default browser",
 };
 
 const GROUPS: { title: string; items: { cmd: string; desc: string }[] }[] = [
@@ -98,16 +99,16 @@ export function ActionsView({ apps, onRun, onNotice }: ActionsViewProps) {
         <div className="section__head">
           <h3 className="section__title">
             Apps on this laptop · {installed.length}
-            {scanning ? " · scanning…" : ""}
+            {scanning ? " · checking…" : ""}
           </h3>
           <button className="text-link" onClick={() => void scan()} disabled={scanning}>
-            scan again
+            check again
           </button>
         </div>
 
         {installed.length === 0 ? (
           <div className="hint">
-            Nothing from my app table was found on this machine yet. {scanning ? "Still looking…" : "Press “scan again” after installing an app."}
+            {scanning ? "Looking for your apps…" : "Nothing I know yet. Install an app, then press “check again”."}
           </div>
         ) : (
           <div className="grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
@@ -115,13 +116,11 @@ export function ActionsView({ apps, onRun, onNotice }: ActionsViewProps) {
               <button
                 key={app.id}
                 className="action"
-                title={app.how ? `Found via ${HOW_LABEL[app.how] ?? app.how}` : `Open ${app.label}`}
+                title={`${HOW_LABEL[app.how ?? ""] ?? "Installed app"} — open ${app.label}`}
                 onClick={() => onRun(`open ${app.terms[0]}`)}
               >
                 <span className="action__cmd">{app.label}</span>
-                <span className="action__desc">
-                  open{app.how === "appx" ? " · store" : app.how === "protocol" ? " · system" : ""}
-                </span>
+                <span className="action__desc">open</span>
               </button>
             ))}
           </div>
@@ -144,15 +143,12 @@ export function ActionsView({ apps, onRun, onNotice }: ActionsViewProps) {
           </button>
           {showScan && (
             <div className="hint__body">
-              Run this in PowerShell on the laptop. It writes <code>max-apps.txt</code> to your Desktop and opens it —
-              send me that file and this tab gets rebuilt to match your machine exactly.
+              Paste this into PowerShell. It only reads, changes nothing, and opens a list of your installed apps in
+              Notepad — keep that list next to MAX and it will remember every app you have.
               <pre className="code-block">{SCAN_COMMAND}</pre>
               <button className="btn" data-variant="quiet" onClick={() => void copyCommand()}>
-                Copy command
+                Copy
               </button>
-              <div className="hint hint--tight">
-                Or, from the repo folder: <code>powershell -ExecutionPolicy Bypass -File app\scripts\list-apps.ps1</code>
-              </div>
             </div>
           )}
         </div>

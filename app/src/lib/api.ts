@@ -6,9 +6,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
+  let data: unknown = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    // A non-JSON body means the service is restarting; the caller shows its own text.
+    data = {};
+  }
   if (!response.ok) {
-    throw new Error((data as { message?: string }).message ?? `Request failed (${response.status})`);
+    const message = (data as { message?: string }).message;
+    throw new Error(message ?? "MAX didn't respond. Try that again.");
   }
   return data as T;
 }

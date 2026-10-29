@@ -206,7 +206,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { ok: true, config: publicConfig(), stats });
   }
 
-  return sendJson(res, 404, { ok: false, message: `No route for ${route}` });
+  return sendJson(res, 404, { ok: false, message: "I don't have that page." });
 }
 
 async function requestHandler(req, res) {
@@ -228,7 +228,8 @@ async function requestHandler(req, res) {
     return serveFile(res, path.join(DIST, "index.html"));
   } catch (error) {
     console.error("[max] request failed", error);
-    if (!res.headersSent) sendJson(res, 500, { ok: false, message: error.message ?? "Server error" });
+    // Never leak a stack trace or an internal message to the island.
+    if (!res.headersSent) sendJson(res, 500, { ok: false, message: "Something went wrong on my side. Try that again." });
     else res.end();
   }
   return undefined;

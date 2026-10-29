@@ -172,3 +172,9 @@ Program Files, in the registry, then the Start menu. If an app is still missing:
 4. It writes `max-apps.txt` to your Desktop and opens it — that is the full list of apps on this laptop.
 5. Keep the file (send it over if you want the app table matched to this exact machine), install
    what was missing, then press **scan again** in Actions.
+
+### Terminal
+
+`open terminal` starts Windows Terminal from the Start menu when it is installed, and falls back to a
+plain `cmd` window on Windows 10 machines that never installed it. Windows Terminal's
+`WindowsApps\wt.exe` is a zero-byte alias that cannot be launched directly, so MAX never spawns it.

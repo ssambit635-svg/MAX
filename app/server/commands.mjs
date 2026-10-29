@@ -68,19 +68,24 @@ function normaliseText(text) {
   return String(text ?? "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-/** Human answer for a launch that failed, so MAX never claims success it did not have. */
+/**
+ * Human answer for a launch that failed. Deliberately free of paths, commands and
+ * error strings: this text is what a stranger sees on first run.
+ */
 function launchFailure(app, result = {}) {
   if (result.reason === "launch-failed") {
     return {
       ok: false,
-      message: `${app.label} is installed, but starting it failed.`,
+      message: `${app.label} is installed, but it didn't start. Try opening it once by hand, then ask me again.`,
       mood: "error",
     };
   }
   if (result.reason === "missing") {
-    const looks = (result.tried ?? []).filter(Boolean).slice(0, 3);
-    const hint = looks.length ? ` I looked in: ${looks.join(", ")}.` : "";
-    return { ok: false, message: `I couldn't find ${app.label} on this machine.${hint}`, mood: "error" };
+    return {
+      ok: false,
+      message: `I couldn't find ${app.label} on this machine. Install it, then press “scan again” in Actions.`,
+      mood: "error",
+    };
   }
   return { ok: false, message: `I couldn't open ${app.label}.`, mood: "error" };
 }
@@ -176,10 +181,7 @@ export async function handleCommand(rawInput) {
         const label = result.label ?? app.label;
         return { ok: true, message: `Opened ${label}.`, ui: { launched: { id: app.id, label } }, mood: "happy" };
       }
-      const failure = launchFailure(app, result);
-      return result.reason === "missing"
-        ? { ...failure, message: `${failure.message} Say “help” to see what I can open.` }
-        : failure;
+      return launchFailure(app, result);
     }
     if (web) {
       const query = normaliseText(targetText).replace(new RegExp(`^\\s*${web}\\s*`, "i"), "").trim();

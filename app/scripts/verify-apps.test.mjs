@@ -9,7 +9,16 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { APPS, appCatalog, closeApp, findApp, resolveApp } from "../server/apps.mjs";
+import {
+  APPS,
+  appCatalog,
+  chooseWindowsTarget,
+  closeApp,
+  findApp,
+  isAppExecutionAlias,
+  launchArgs,
+  resolveApp,
+} from "../server/apps.mjs";
 
 let failures = 0;
 
@@ -122,6 +131,61 @@ await check("glob expansion finds version folders", async () => {
   const found = fs.readdirSync(root).map((name) => path.join(root, name, "office6", "wps.exe"));
   assert.ok(found.some((file) => fs.existsSync(file)));
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+/* ------------------------------------------------ Windows decision tree ----- */
+
+const terminal = byId("terminal");
+const CMD = "C:\\Windows\\System32\\cmd.exe";
+const WT_ID = "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App";
+
+await check("terminal prefers the Start-menu package when Windows Terminal exists", () => {
+  assert.equal(terminal.win.preferStartMenu, true);
+  const choice = chooseWindowsTarget(terminal, { hits: [CMD], appId: WT_ID });
+  assert.equal(choice.kind, "appx");
+  assert.equal(choice.target, WT_ID);
+});
+
+await check("terminal falls back to a real cmd.exe window on Windows 10", () => {
+  const choice = chooseWindowsTarget(terminal, { hits: [CMD], appId: null });
+  assert.equal(choice.kind, "exe");
+  assert.equal(choice.target, CMD);
+  assert.deepEqual(choice.args, ["/c", "start", "", "cmd.exe"]);
+});
+
+await check("terminal never targets a WindowsApps alias", () => {
+  for (const candidate of terminal.win.paths ?? []) {
+    assert.ok(!/WindowsApps/i.test(candidate), `alias path still listed: ${candidate}`);
+  }
+  assert.ok(terminal.win.knownAppIds.includes(WT_ID));
+});
+
+await check("app-execution aliases are recognised", () => {
+  assert.equal(isAppExecutionAlias("C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe"), true);
+  assert.equal(isAppExecutionAlias("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"), false);
+  assert.equal(isAppExecutionAlias("C:\\Windows\\System32\\cmd.exe"), false);
+});
+
+await check("console apps get a visible window, others do not", () => {
+  assert.deepEqual(launchArgs(terminal.win, CMD), ["/c", "start", "", "cmd.exe"]);
+  assert.deepEqual(launchArgs(byId("chrome").win, "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"), []);
+});
+
+await check("Store apps carry stable package ids", () => {
+  assert.ok(byId("camera").win.knownAppIds.length > 0);
+  assert.ok(byId("whatsapp").win.knownAppIds.length > 0);
+  assert.ok(byId("copilot").win.knownAppIds.length > 0);
+});
+
+await check("a Store app with an install path still resolves to the package", () => {
+  const camera = byId("camera");
+  const choice = chooseWindowsTarget(camera, { hits: ["C:\\Program Files\\WindowsApps\\Camera\\WindowsCamera.exe"], appId: "Microsoft.WindowsCamera_8wekyb3d8bbwe!App" });
+  assert.ok(["appx", "exe"].includes(choice.kind));
+  assert.equal(choice.found, true);
+});
+
+await check("nothing found means no invention", () => {
+  assert.equal(chooseWindowsTarget({ id: "x", align: 0, win: {} }, {}), null);
 });
 
 if (failures) {

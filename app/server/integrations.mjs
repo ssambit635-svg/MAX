@@ -284,7 +284,7 @@ async function githubStats() {
       sparkline: [0, 0, 0, 0, 0, 0, 0],
       contributions: null,
       activity: [],
-      note: `Could not reach GitHub (${error.message}). It retries every minute.`,
+      note: "GitHub isn't answering right now. I'll try again in a minute.",
     };
   }
 }
@@ -326,7 +326,7 @@ async function leetcodeStats() {
       body: JSON.stringify({ query: LEETCODE_QUERY, variables: { username } }),
     });
     const matched = data?.data?.matchedUser;
-    if (!matched) return emptyLeetcode(username, `LeetCode has no user called “${username}” — check the handle in Settings.`);
+    if (!matched) return emptyLeetcode(username, `LeetCode has no user called “${username}”. Check the handle in Settings.`);
 
     const acList = matched.submitStatsGlobal?.acSubmissionNum ?? [];
     const pick = (difficulty) => acList.find((entry) => entry.difficulty === difficulty)?.count ?? 0;
@@ -366,7 +366,7 @@ async function leetcodeStats() {
       recent: DEMO_LEETCODE.recent,
     };
   } catch (error) {
-    return emptyLeetcode(username, `Could not reach LeetCode (${error.message}). It retries every minute.`);
+    return emptyLeetcode(username, "LeetCode isn't answering right now. I'll try again in a minute.");
   }
 }
 
@@ -403,7 +403,7 @@ async function renderStats() {
       total: list.length,
     };
   } catch (error) {
-    return { ...DEMO_RENDER, note: `Render is unreachable: ${error.message}` };
+    return { ...DEMO_RENDER, note: "Render isn't answering right now. I'll try again in a minute." };
   }
 }
 
@@ -518,6 +518,8 @@ const GITHUB_TOKEN_DOCS = "https://github.com/settings/tokens";
  * Checks credentials *before* they are saved, so Settings can say "connected as @you"
  * or the exact reason it failed, instead of silently storing a wrong key.
  */
+const PROVIDER_LABEL = { github: "GitHub", leetcode: "LeetCode", render: "Render", vscode: "VS Code" };
+
 export async function verifyIntegration(provider, input = {}) {
   try {
     if (provider === "github") {
@@ -596,7 +598,7 @@ export async function verifyIntegration(provider, input = {}) {
 
     return { ok: false, message: `Unknown integration “${provider}”.` };
   } catch (error) {
-    return { ok: false, message: `Could not reach ${provider}: ${error.message}` };
+    return { ok: false, message: `${PROVIDER_LABEL[provider] ?? "That service"} didn't answer. Check your connection and try again.` };
   }
 }
 

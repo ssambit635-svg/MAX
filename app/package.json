@@ -1,7 +1,7 @@
 {
   "name": "max-companion",
   "productName": "MAX",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": true,
   "description": "MAX \u2014 a calm, always-on desktop companion island with a tiny animated pet that runs your small tasks.",
   "license": "MIT",

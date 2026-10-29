@@ -19,6 +19,18 @@ interface NowViewProps {
   onOpenNote: () => void;
 }
 
+/** Show the folder the way a person reads it: `~/Documents/MAX notes`. */
+function prettyFolder(folder: string) {
+  if (!folder) return "your Documents folder";
+  const cleaned = folder.replace(/\\/g, "/");
+  const match = cleaned.match(/^([A-Za-z]:)?\/Users\/[^/]+\/(.*)$/);
+  if (match) return `~/${match[2]}`;
+  const linuxHome = cleaned.match(/^\/home\/[^/]+\/(.*)$/);
+  if (linuxHome) return `~/${linuxHome[1]}`;
+  const tail = cleaned.split("/").filter(Boolean).slice(-2).join("/");
+  return tail || "your Documents folder";
+}
+
 export function NowView({
   state,
   mood,
@@ -163,7 +175,8 @@ export function NowView({
           <div className="list">
             {notes.length === 0 && (
               <div className="empty">
-                Notes land in <span style={{ color: "var(--text-2)" }}>{state.config.saveDir}</span>.
+                Saved notes land in{" "}
+                <span style={{ color: "var(--text-2)" }}>{prettyFolder(state.config.saveDir)}</span>.
               </div>
             )}
             {notes.slice(0, 4).map((note) => (
@@ -171,7 +184,7 @@ export function NowView({
                 <span className="list__icon" data-kind="note">
                   ✎
                 </span>
-                <span className="list__text" title={note.path}>
+                <span className="list__text" title={`Saved ${timeAgo(note.modified)}`}>
                   {note.name}
                 </span>
                 <span className="list__time">{timeAgo(note.modified)}</span>
