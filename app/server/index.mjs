@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { APP_ROOT, appendActivity, loadActivity, loadConfig, publicConfig, saveConfig } from "./store.mjs";
 import { appCatalog, handleCommand, recentNotes, saveNote } from "./commands.mjs";
 import { probeApps } from "./apps.mjs";
+import { rejectForeignCaller } from "./origin.mjs";
 import { collectStats, invalidateStats, onStatsUpdated, verifyIntegration } from "./integrations.mjs";
 import { catalog as languageCatalog, detectLanguage, getLanguage } from "./code/languages.mjs";
 import { applyFixes, review } from "./code/engine.mjs";
@@ -13,7 +14,9 @@ import { scanProject } from "./code/project.mjs";
 import { deleteSnippet, findSnippet, saveSnippet, snippetIndex } from "./snippets.mjs";
 import { clearLog, diagnosticsSummary, logEvent, readLog } from "./diagnostics.mjs";
 
-const DEFAULT_HOST = process.env.MAX_HOST ?? "0.0.0.0";
+// Loopback by default: an island on a café Wi-Fi must not be reachable from the
+// next table. Anything wider has to be asked for explicitly (a dev preview).
+const DEFAULT_HOST = process.env.MAX_HOST ?? "127.0.0.1";
 const DEFAULT_PORT = Number(process.env.MAX_API_PORT ?? process.env.PORT ?? 7999);
 const DIST = process.env.MAX_DIST_DIR ?? path.join(APP_ROOT, "dist");
 const ASSETS = process.env.MAX_ASSETS_DIR ?? path.join(APP_ROOT, "assets");
@@ -322,6 +325,13 @@ async function handleApi(req, res, url) {
 async function requestHandler(req, res) {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   try {
+    // Before any route: is this really the island talking to itself?
+    const foreign = rejectForeignCaller(req, { port: Number(process.env.MAX_API_PORT) || boundPort || undefined });
+    if (foreign) {
+      sendJson(res, 403, { ok: false, message: foreign });
+      return undefined;
+    }
+
     if (url.pathname.startsWith("/api/")) {
       await handleApi(req, res, url);
       return;
@@ -361,6 +371,8 @@ async function requestHandler(req, res) {
  * Starts the local service. Resolves with the server instance and the port it actually
  * bound, so the desktop shell can move on to the next port when one is already taken.
  */
+let boundPort = 0;
+
 export function startServer({ port = DEFAULT_PORT, host = DEFAULT_HOST } = {}) {
   return new Promise((resolve, reject) => {
     const server = http.createServer(requestHandler);
@@ -377,6 +389,7 @@ export function startServer({ port = DEFAULT_PORT, host = DEFAULT_HOST } = {}) {
       console.log(`[max] island server on http://${host}:${actualPort}`);
       console.log(`[max] ui: ${DIST}`);
       console.log(`[max] notes: ${loadConfig().saveDir}`);
+      boundPort = actualPort;
       resolve({ server, port: actualPort, close: () => new Promise((done) => server.close(done)) });
     };
     server.once("error", onError);

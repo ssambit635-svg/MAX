@@ -230,10 +230,10 @@ const sandboxConfig = await fetch(`${ORIGIN}/api/config`, {
 }).then((response) => response.json());
 if (!sandboxConfig?.ok) console.error("could not isolate the sandbox folders");
 
-const call = async (method, route, body, { raw = false, timeout = 15000 } = {}) => {
+const call = async (method, route, body, { raw = false, timeout = 15000, extraHeaders } = {}) => {
   const response = await fetch(`${ORIGIN}${route}`, {
     method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    headers: { ...(body === undefined ? {} : { "content-type": "application/json" }), ...(extraHeaders ?? {}) },
     body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
     signal: AbortSignal.timeout(timeout),
   });
@@ -1296,7 +1296,97 @@ await test("no route ever answers with a crash", async () => {
   return problems;
 });
 
-/* ------------------------------------------------------------- 14. hygiene */
+
+/* ================================================================== wave 6 ==
+   The island listens on loopback, and loopback is not private: any page in the
+   user's browser can reach it. These checks are the wall.
+   ========================================================================= */
+
+await test("only the island may call the island", async () => {
+  const problems = [];
+  const http = await import("node:http");
+  const ask = (headers, path = "/api/state") =>
+    new Promise((resolve) => {
+      const request = http.request({ host: "127.0.0.1", port: service.port, path, headers }, (response) => {
+        response.resume();
+        resolve(response.statusCode);
+      });
+      request.on("error", () => resolve("error"));
+      request.end();
+    });
+
+  if ((await ask({ host: `127.0.0.1:${service.port}` })) !== 200) problems.push("the island refused itself");
+  if ((await ask({ host: `localhost:${service.port}` })) !== 200) problems.push("localhost was refused");
+  if ((await ask({ host: `[::1]:${service.port}` })) !== 200) problems.push("the ipv6 loopback was refused");
+  if ((await ask({ host: "evil.example" })) !== 403) problems.push("a rebinding host was accepted");
+  if ((await ask({ host: `192.168.1.5:${service.port}` })) !== 403) problems.push("a LAN address was accepted");
+  if ((await ask({ host: `127.0.0.1:${service.port + 1}` })) !== 403) problems.push("a forwarded port was accepted");
+
+  // A page in the browser carries an Origin: it must not be able to run commands.
+  const fromPage = await call("POST", "/api/command", { input: "help" }, { extraHeaders: { origin: "https://evil.example" } });
+  if (fromPage.status !== 403) problems.push(`a foreign page could POST commands (${fromPage.status})`);
+  const weirdOrigin = await call("GET", "/api/state", undefined, { extraHeaders: { origin: "null" } });
+  if (weirdOrigin.status !== 200) problems.push("a file:// style origin was refused");
+
+  // The service must not listen to the whole network by default.
+  const source = fs.readFileSync(path.join(APP, "server/index.mjs"), "utf8");
+  const declared = source.match(/const DEFAULT_HOST = ([^;]+);/)?.[1] ?? "";
+  if (!/127\.0\.0\.1|::1|localhost/.test(declared)) problems.push(`the default host is ${declared.trim()} — that is the whole network`);
+
+  // The guard is pure, so it can be checked directly too.
+  const { rejectForeignCaller } = await import("../server/origin.mjs");
+  if (rejectForeignCaller({ headers: { host: "127.0.0.1:1", origin: `http://127.0.0.1:${service.port}` } }, {}) !== null) {
+    problems.push("a genuine same-machine origin was refused");
+  }
+  return problems;
+});
+
+await test("a note name cannot escape its folder", async () => {
+  const problems = [];
+  const { saveNote } = await import("../server/commands.mjs");
+  const folder = path.join(SANDBOX, "escape-notes");
+  fs.mkdirSync(folder, { recursive: true });
+  const { saveConfig } = await import("../server/store.mjs");
+  saveConfig({ saveDir: folder });
+
+  const names = ["../../escape", "a/b/../../c", "..", ".", "CON", "x\u0000y", "   ", "very".repeat(80), "vadász/../..//", "....//....//"];
+  for (const name of names) {
+    const result = saveNote("body", name);
+    if (!result.ok) continue; // refusing is fine, escaping is not
+    const inside = path.resolve(result.file).startsWith(path.resolve(folder) + path.sep);
+    if (!inside) problems.push(`the name ${JSON.stringify(name)} wrote outside the folder`);
+    if (path.basename(result.file).length > 120) problems.push(`the name ${JSON.stringify(name)} produced a huge file name`);
+  }
+  const strays = fs.readdirSync(SANDBOX).filter((entry) => entry.endsWith(".md"));
+  if (strays.length) problems.push(`notes leaked into the sandbox root: ${strays.slice(0, 3).join(", ")}`);
+  saveConfig({ saveDir: path.join(SANDBOX, "notes") });
+  return problems;
+});
+
+await test("two hundred writes at once all land", async () => {
+  const problems = [];
+  const started = Date.now();
+  const responses = await Promise.all(Array.from({ length: 200 }, (_value, index) => call("POST", "/api/notes", { text: `burst ${index}` })));
+  const bad = responses.filter((response) => response.status !== 200 || !response.json?.ok);
+  if (bad.length) problems.push(`${bad.length} of 200 concurrent note writes failed`);
+  const elapsed = Date.now() - started;
+  if (elapsed > 15_000) problems.push(`200 writes took ${elapsed}ms`);
+
+  const listed = await call("GET", "/api/notes");
+  if (!Array.isArray(listed.json?.notes)) problems.push("the note list is not a list after the burst");
+
+  // Malformed bodies, in bulk, must never take the service down.
+  const hostile = await Promise.all(
+    Array.from({ length: 60 }, (_value, index) =>
+      call("POST", "/api/command", index % 2 ? "{ broken json" : "[" + "[".repeat(5000) + "]".repeat(5000), { raw: true }),
+    ),
+  );
+  if (hostile.some((response) => response.status >= 500)) problems.push("a malformed body produced a 500");
+  if ((await call("GET", "/api/health")).status !== 200) problems.push("the service died during the burst");
+  return problems;
+});
+
+/* ------------------------------------------------------------- 15. hygiene */
 
 await test("nothing threw in the background while all of that ran", async () => unhandled.slice(0, 5));
 
