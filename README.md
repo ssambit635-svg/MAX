@@ -152,6 +152,9 @@ the updater, then uninstalls itself.
 An installed build updates itself from GitHub Releases — 30 seconds after launch, then every six
 hours. It downloads in the background and only installs when you press **Restart to install**.
 
+**Ready to test it?** [`docs/TESTING.md`](docs/TESTING.md) walks through every 0.4.0 feature one at a
+time — what to click, what you should see, and what a failure means.
+
 **New to it on Windows?** [`docs/QUICKSTART-WINDOWS.md`](docs/QUICKSTART-WINDOWS.md) has the exact
 install steps (including the SmartScreen step for an unsigned build) and a 10-minute test plan.
 

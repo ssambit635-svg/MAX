@@ -164,11 +164,11 @@ export function scanMessage(result) {
     return `Scanned ${result.summary.files} files — all clean. Score ${result.score}.`;
   }
   const worst = result.worst[0];
-  const parts = [
-    `${result.summary.errors} error${result.summary.errors === 1 ? "" : "s"}`,
-    `${result.summary.warnings} warning${result.summary.warnings === 1 ? "" : "s"}`,
-    `across ${new Set(result.worst.map((entry) => entry.path)).size} file(s)`,
-  ];
-  const first = worst ? ` Start with ${worst.name}: ${worst.issues[0]?.title ?? "issues found"}.` : "";
+  const files = (count, plural) => `${count} ${plural}${count === 1 ? "" : "s"}`;
+  const parts = [files(result.summary.errors, "error"), files(result.summary.warnings, "warning")];
+  if (result.summary.hints) parts.push(files(result.summary.hints, "hint"));
+  const first = worst
+    ? ` Worst is ${worst.name} at ${worst.score}: ${worst.issues[0]?.title ?? "issues found"}.`
+    : "";
   return `Scanned ${result.summary.files} files, score ${result.score} — ${parts.join(", ")}.${first}`;
 }
