@@ -153,15 +153,24 @@ jobs:
           if (-not $installer) { Say error "no NSIS installer in release/"; exit 1 }
           Say notice ("installer {0} {1:N1} MB" -f $installer.Name, ($installer.Length / 1MB))
 
+          # A 79 MB NSIS installer occasionally dies with an access violation on a
+          # fresh runner while Defender is still scanning it. That is the runner,
+          # not the build, so the install is attempted twice before failing.
           $exit = 'unknown'
-          try {
-            $proc = Start-Process -FilePath $installer.FullName -ArgumentList '/S', '/currentuser' -PassThru
-            $proc.WaitForExit(300000) | Out-Null
-            $exit = $proc.ExitCode
-          } catch {
-            Say warning "launching the installer threw: $($_.Exception.Message)"
+          for ($attempt = 1; $attempt -le 2; $attempt++) {
+            try {
+              $proc = Start-Process -FilePath $installer.FullName -ArgumentList '/S', '/currentuser' -PassThru
+              $proc.WaitForExit(300000) | Out-Null
+              $exit = $proc.ExitCode
+            } catch {
+              Say warning "launching the installer threw: $($_.Exception.Message)"
+              $exit = 'threw'
+            }
+            Say notice "installer attempt ${attempt} exit code: $exit"
+            if ($exit -eq 0) { break }
+            if (Test-Path (Join-Path (Join-Path $env:LOCALAPPDATA 'Programs\MAX') 'MAX.exe')) { break }
+            Start-Sleep -Seconds 10
           }
-          Say notice "installer exit code: $exit"
 
           # Ask Windows where it went; guessing the path is how this check lied before.
           $locations = @()
