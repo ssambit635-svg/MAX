@@ -147,4 +147,3 @@ export function listWorkspace(workspace) {
   return found.sort((a, b) => b.modified.localeCompare(a.modified)).slice(0, 40);
 }
 
-export { MAX_BYTES, EXTENSIONS };

@@ -53,6 +53,21 @@ Press **Fix** and it applies only behaviour-preserving edits (`==` → `===`, `v
 rewritten — MAX names the line and asks you to fix that first.
 
 
+## Keeping it clean
+
+Five test suites run in CI on every push, and they are as much about code health as behaviour:
+
+| Command | Guards |
+|---|---|
+| `npm run test:integrations` | every verify branch (bad handle, 401, 403, rate limit) |
+| `npm run test:apps` | the app allowlist and the Windows resolver (aliases, Store ids, fallbacks) |
+| `npm run test:code` | every language fixture, every safe fix, file guards |
+| `npm run test:highlight` | colours per language, no lost characters, HTML escaping |
+| `npm run test:codebase` | dead CSS rules, unused exports, dead preferences, version drift, routes that do not exist |
+
+`test:codebase` is the housekeeper: add a setting nobody reads, a style nobody uses or an export
+nobody imports, and it fails with the exact name.
+
 ## The pet
 
 Drawn in SVG + CSS — no sprite sheets, no Rive, no Lottie, no image files. Eight live expressions,

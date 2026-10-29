@@ -9,37 +9,20 @@ import { StarterCard } from "./components/StarterCard";
 import { api } from "./lib/api";
 import { filterSuggestions, type Suggestion } from "./lib/commands";
 import { greeting } from "./lib/format";
-import { inDesktopShell, shellBridge } from "./lib/shell";
+import { shellBridge } from "./lib/shell";
+import { isDesktopShell, MOOD_COPY, TABS } from "./lib/ui";
+import { useLiveStream } from "./lib/useLiveStream";
 import { useWindowDrag } from "./lib/useWindowDrag";
 import type { CommandResult, IntegrationId, Mood, StatePayload, Tab } from "./lib/types";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "now", label: "Now" },
-  { id: "code", label: "Code" },
-  { id: "stats", label: "Stats" },
-  { id: "actions", label: "Actions" },
-  { id: "settings", label: "Settings" },
-];
-
-const MOOD_COPY: Record<Mood, string> = {
-  idle: "ready when you are",
-  listening: "listening",
-  thinking: "working on it",
-  working: "in focus",
-  happy: "on it",
-  sleepy: "resting",
-  error: "needs a hand",
-  celebrate: "nice one",
-};
-
-const IS_SHELL =
-  inDesktopShell() ||
-  (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("shell") === "desktop");
+const IS_SHELL = isDesktopShell();
 
 export default function App() {
   const [state, setState] = useState<StatePayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  // "Stay open" in Settings means Esc must not fold the island.
+  const pinned = Boolean(state?.config.prefs.keepIslandOpen);
   const [tab, setTab] = useState<Tab>("now");
   const [mood, setMood] = useState<Mood>("idle");
   const [caption, setCaption] = useState("");
@@ -67,7 +50,6 @@ export default function App() {
   const toastTimer = useRef<number | null>(null);
   const highlightTimer = useRef<number | null>(null);
   const lastActionAt = useRef(Date.now());
-  const sseAlive = useRef(false);
 
   /* -------------------------------------------------------------- bootstrap */
 
@@ -114,6 +96,15 @@ export default function App() {
     document.body.dataset.motion = state?.config.prefs.reduceMotion ? "reduced" : "animated";
   }, [state?.config.prefs.reduceMotion]);
 
+  // Two prefs are owned by the desktop shell: the OS login item and always-on-top.
+  // Settings and the tray menu both write them, so both read from the same config.
+  useEffect(() => {
+    const bridge = shellBridge();
+    if (!bridge || !state) return;
+    bridge.setLoginItem(state.config.prefs.launchAtLogin);
+    bridge.setAlwaysOnTop(state.config.prefs.alwaysOnTop);
+  }, [state?.config.prefs.launchAtLogin, state?.config.prefs.alwaysOnTop]);
+
   useEffect(() => {
     if (!state) return;
     const id = window.setInterval(async () => {
@@ -129,37 +120,10 @@ export default function App() {
 
   /* ------------------------------------------------------------------ live */
 
-  useEffect(() => {
-    let source: EventSource | null = null;
-    let retry = 0;
-    const connect = () => {
-      source = new EventSource("/api/events");
-      source.addEventListener("hello", () => {
-        sseAlive.current = true;
-      });
-      source.addEventListener("activity", (event) => {
-        const payload = JSON.parse((event as MessageEvent).data) as {
-          activity: StatePayload["activity"];
-        };
-        setState((prev) => (prev ? { ...prev, activity: payload.activity } : prev));
-      });
-      source.addEventListener("notes", (event) => {
-        const payload = JSON.parse((event as MessageEvent).data) as { notes: StatePayload["notes"] };
-        setState((prev) => (prev ? { ...prev, notes: payload.notes } : prev));
-      });
-      source.onerror = () => {
-        sseAlive.current = false;
-        source?.close();
-        retry = Math.min(retry + 1, 6);
-        window.setTimeout(connect, retry * 1200);
-      };
-    };
-    connect();
-    return () => {
-      sseAlive.current = false;
-      source?.close();
-    };
-  }, []);
+  const sseAlive = useLiveStream({
+    onActivity: (activity) => setState((prev) => (prev ? { ...prev, activity } : prev)),
+    onNotes: (notes) => setState((prev) => (prev ? { ...prev, notes } : prev)),
+  });
 
   /* --------------------------------------------------------------- idleness */
 
@@ -353,6 +317,16 @@ export default function App() {
     [flashMood, showToast],
   );
 
+  // The tray menu can change the same two prefs; persist whatever it sends so the
+  // two surfaces never disagree.
+  useEffect(() => {
+    const bridge = shellBridge();
+    if (!bridge) return;
+    return bridge.onPrefChanged((prefs) => {
+      void applyConfig(prefs).catch(() => undefined);
+    });
+  }, [applyConfig]);
+
   const disconnect = useCallback(
     async (provider: string) => {
       setBusy(true);
@@ -384,12 +358,12 @@ export default function App() {
           setNoteOpen(false);
           return;
         }
-        if (expanded) setExpanded(false);
+        if (expanded && !pinned) setExpanded(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [expanded, noteOpen]);
+  }, [expanded, noteOpen, pinned]);
 
   /* ------------------------------------------------------------ suggestions */
 

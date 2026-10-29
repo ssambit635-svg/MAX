@@ -16,6 +16,7 @@ const EXPANDED = { width: 880, height: 744 };
 
 let win = null;
 let tray = null;
+let alwaysOnTop = true;
 let quitting = false;
 let currentMode = "collapsed";
 let serverStarted = false;
@@ -275,6 +276,17 @@ function createTray() {
   const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 }) : nativeImage.createEmpty();
   tray = new Tray(icon);
   tray.setToolTip("MAX — desktop companion");
+  refreshTrayMenu();
+  tray.on("click", () => {
+    win?.showInactive();
+    applyMode("expanded");
+    win?.webContents.send("max:palette");
+  });
+}
+
+/** Rebuild the menu so a checkbox never lies about the current state. */
+function refreshTrayMenu() {
+  if (!tray) return;
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Open MAX", click: () => { win?.showInactive(); applyMode("expanded"); win?.webContents.send("max:palette"); } },
@@ -283,9 +295,12 @@ function createTray() {
       {
         label: "Always on top",
         type: "checkbox",
-        checked: true,
+        checked: alwaysOnTop,
         click: (item) => {
-          win?.setAlwaysOnTop(item.checked, item.checked ? "screen-saver" : "normal");
+          alwaysOnTop = item.checked;
+          win?.setAlwaysOnTop(alwaysOnTop, alwaysOnTop ? "screen-saver" : "normal");
+          win?.webContents.send("max:pref-changed", { alwaysOnTop });
+          refreshTrayMenu();
         },
       },
       { type: "separator" },
@@ -293,18 +308,17 @@ function createTray() {
         label: "Launch at login",
         type: "checkbox",
         checked: app.getLoginItemSettings().openAtLogin,
-        click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked, openAsHidden: true }),
+        click: (item) => {
+          app.setLoginItemSettings({ openAtLogin: item.checked, openAsHidden: true });
+          win?.webContents.send("max:pref-changed", { launchAtLogin: item.checked });
+          refreshTrayMenu();
+        },
       },
       { label: "Open settings folder", click: () => shell.openPath(app.getPath("userData")) },
       { type: "separator" },
       { label: "Quit MAX", click: () => { quitting = true; app.quit(); } },
     ]),
   );
-  tray.on("click", () => {
-    win?.showInactive();
-    applyMode("expanded");
-    win?.webContents.send("max:palette");
-  });
 }
 
 const singleInstance = app.requestSingleInstanceLock();
@@ -339,7 +353,6 @@ if (!singleInstance) {
       applyMode(mode === "expanded" ? "expanded" : "collapsed");
     });
 
-    ipcMain.on("max:hide", () => win?.hide());
 
     // Manual dragging: `-webkit-app-region: drag` would swallow the clicks that open the island.
     ipcMain.on("max:drag-begin", (_event, point) => {
@@ -354,6 +367,19 @@ if (!singleInstance) {
       const x = Math.round(dragOrigin.x + (point.screenX - dragOrigin.screenX));
       const y = Math.round(dragOrigin.y + (point.screenY - dragOrigin.screenY));
       win.setPosition(x, y, false);
+    });
+
+    // The Settings switches are the single source of truth for the OS login item and
+    // always-on-top; the tray menu reflects the same state instead of guessing.
+    ipcMain.on("max:login-item", (_event, enabled) => {
+      app.setLoginItemSettings({ openAtLogin: Boolean(enabled), openAsHidden: true });
+      refreshTrayMenu();
+    });
+
+    ipcMain.on("max:always-on-top", (_event, enabled) => {
+      alwaysOnTop = Boolean(enabled);
+      win?.setAlwaysOnTop(alwaysOnTop, alwaysOnTop ? "screen-saver" : "normal");
+      refreshTrayMenu();
     });
 
     ipcMain.on("max:open-external", (_event, url) => {

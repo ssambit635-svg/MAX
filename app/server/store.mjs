@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { PERSONAL_PRESET, presetEnabled } from "./personal.mjs";
 
 export const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-export const STATE_DIR = process.env.MAX_STATE_DIR ?? path.join(APP_ROOT, ".max");
+const STATE_DIR = process.env.MAX_STATE_DIR ?? path.join(APP_ROOT, ".max");
 const CONFIG_FILE = path.join(STATE_DIR, "config.json");
 const ACTIVITY_FILE = path.join(STATE_DIR, "activity.json");
 
@@ -18,6 +18,7 @@ const DEFAULT_CONFIG = {
   render: { apiKey: "" },
   prefs: {
     launchAtLogin: false,
+    alwaysOnTop: true,
     reduceMotion: false,
     keepIslandOpen: false,
     idleSleepSeconds: 120,
@@ -115,4 +116,3 @@ export function appendActivity(entry) {
   return trimmed;
 }
 
-export { DEFAULT_CONFIG };

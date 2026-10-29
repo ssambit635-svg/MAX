@@ -92,7 +92,7 @@ const DEMO_RENDER = {
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** GitHub's own contribution calendar, parsed from the public profile fragment. */
-export function parseContributionCalendar(html) {
+function parseContributionCalendar(html) {
   // 1) every <td> that describes a day
   const cells = [];
   const tagRe = /<td\b[^>]*>/g;
@@ -189,7 +189,6 @@ async function fetchContributions(login, headers) {
 function monthDay(date) {
   return new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
-export { monthDay };
 
 async function githubStats() {
   const config = loadConfig();
@@ -512,7 +511,6 @@ function systemStats() {
 
 /* --------------------------------------------------------- verify connect */
 
-const GITHUB_TOKEN_DOCS = "https://github.com/settings/tokens";
 
 /**
  * Checks credentials *before* they are saved, so Settings can say "connected as @you"
@@ -602,7 +600,6 @@ export async function verifyIntegration(provider, input = {}) {
   }
 }
 
-export { GITHUB_TOKEN_DOCS };
 
 export async function collectStats() {
   return cached("stats", async () => {

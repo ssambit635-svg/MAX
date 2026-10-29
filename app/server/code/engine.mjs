@@ -158,10 +158,3 @@ export function applyFixes(code, languageId) {
   };
 }
 
-/** What the engine knows, for the UI's language picker. */
-export function engineInfo() {
-  return {
-    rules: rulesFor({ id: "javascript", stringQuotes: ['"'] }).length,
-    offline: true,
-  };
-}

@@ -105,6 +105,7 @@ export interface PublicConfig {
   codeDir: string;
   prefs: {
     launchAtLogin: boolean;
+    alwaysOnTop: boolean;
     reduceMotion: boolean;
     keepIslandOpen: boolean;
     idleSleepSeconds: number;

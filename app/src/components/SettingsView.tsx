@@ -88,7 +88,7 @@ export function SettingsView({ config, busy, onConfig, onDisconnect, onVerify, o
           <div className="setting">
             <div className="setting__text">
               <div className="setting__name">Keep the island open</div>
-              <div className="setting__desc">Stops MAX from folding back into the pill after a command.</div>
+              <div className="setting__desc">Esc won't fold it — only the chevron will.</div>
             </div>
             <button className="switch" data-on={config.prefs.keepIslandOpen} onClick={() => toggle("keepIslandOpen")} aria-label="Toggle pinned island" />
           </div>
@@ -98,6 +98,18 @@ export function SettingsView({ config, busy, onConfig, onDisconnect, onVerify, o
               <div className="setting__desc">MAX opens quietly, no window flash.</div>
             </div>
             <button className="switch" data-on={config.prefs.launchAtLogin} onClick={() => toggle("launchAtLogin")} aria-label="Toggle launch at login" />
+          </div>
+          <div className="setting">
+            <div className="setting__text">
+              <div className="setting__name">Always on top</div>
+              <div className="setting__desc">Stays above other windows. Also lives in the tray menu.</div>
+            </div>
+            <button
+              className="switch"
+              data-on={config.prefs.alwaysOnTop}
+              onClick={() => toggle("alwaysOnTop")}
+              aria-label="Toggle always on top"
+            />
           </div>
           <div className="setting">
             <div className="setting__text">
@@ -293,6 +305,11 @@ export function SettingsView({ config, busy, onConfig, onDisconnect, onVerify, o
             <button className="btn" data-variant="quiet" onClick={() => openExternal("https://github.com/ssambit635-svg/MAX")}>
               Open MAX on GitHub ↗
             </button>
+            {shellBridge() && (
+              <button className="btn" data-variant="quiet" onClick={() => shellBridge()?.quit()}>
+                Quit MAX
+              </button>
+            )}
           </div>
         </div>
       </div>

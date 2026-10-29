@@ -62,6 +62,9 @@ jobs:
       - name: Editor syntax highlighting
         run: npm run test:highlight
 
+      - name: Codebase housekeeping (dead CSS, dead exports, dead prefs)
+        run: npm run test:codebase
+
       - name: Smoke-test the local service
         run: |
           node server/index.mjs &
