@@ -1,4 +1,15 @@
-import type { AppEntry, CommandResult, NoteEntry, PublicConfig, StatePayload, Stats } from "./types";
+import type {
+  AppEntry,
+  CodeFile,
+  CodeFixResult,
+  CodeMeta,
+  CodeReview,
+  CommandResult,
+  NoteEntry,
+  PublicConfig,
+  StatePayload,
+  Stats,
+} from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -31,6 +42,14 @@ export const api = {
     }),
   notes: () => request<{ notes: NoteEntry[] }>("/api/notes"),
   apps: () => request<{ apps: AppEntry[] }>("/api/apps"),
+  codeMeta: () => request<CodeMeta>("/api/code/meta"),
+  codeReview: (code: string, language: string) =>
+    request<CodeReview>("/api/code/review", { method: "POST", body: JSON.stringify({ code, language }) }),
+  codeFix: (code: string, language: string) =>
+    request<CodeFixResult>("/api/code/fix", { method: "POST", body: JSON.stringify({ code, language }) }),
+  codeOpen: (path: string) => request<CodeFile>("/api/code/open", { method: "POST", body: JSON.stringify({ path }) }),
+  codeSave: (path: string, code: string) =>
+    request<CodeFile>("/api/code/save", { method: "POST", body: JSON.stringify({ path, code }) }),
   config: (patch: Record<string, unknown>) =>
     request<{ ok: boolean; config: PublicConfig; stats: Stats }>("/api/config", {
       method: "POST",

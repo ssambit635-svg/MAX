@@ -62,7 +62,7 @@ export function recentNotes(limit = 6) {
 }
 
 const HELP =
-  "Try “open chrome”, “open edge”, “open word”, “open wps”, “open whatsapp”, “open copilot”, “open camera”, “save note <text>”, “timer 25”, or “stats”.";
+  "Try “open edge”, “open word”, “open wps”, “open whatsapp”, “open camera”, “code”, “save note <text>”, “focus 25”, or “stats”.";
 
 function normaliseText(text) {
   return String(text ?? "").toLowerCase().replace(/\s+/g, " ").trim();
@@ -110,6 +110,15 @@ export async function handleCommand(rawInput) {
       ok: true,
       message: "Here are your numbers.",
       ui: { tab: "stats", highlight: which ? (which === "vs" ? "vscode" : which) : undefined },
+      mood: "happy",
+    };
+  }
+  if (/^(code|lint|review|check code|code editor|editor)\b/.test(lower)) {
+    const wantsFix = /\bfix|clean|repair\b/.test(lower);
+    return {
+      ok: true,
+      message: wantsFix ? "Paste the code and I'll fix what's safe to fix." : "Code tab is open — paste a file and press Check.",
+      ui: { tab: "code" },
       mood: "happy",
     };
   }

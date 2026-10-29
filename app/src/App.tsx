@@ -3,6 +3,7 @@ import { Pet } from "./components/Pet";
 import { NowView } from "./components/NowView";
 import { StatsView } from "./components/StatsView";
 import { ActionsView } from "./components/ActionsView";
+import { CodeView } from "./components/CodeView";
 import { SettingsView } from "./components/SettingsView";
 import { StarterCard } from "./components/StarterCard";
 import { api } from "./lib/api";
@@ -14,6 +15,7 @@ import type { CommandResult, IntegrationId, Mood, StatePayload, Tab } from "./li
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "now", label: "Now" },
+  { id: "code", label: "Code" },
   { id: "stats", label: "Stats" },
   { id: "actions", label: "Actions" },
   { id: "settings", label: "Settings" },
@@ -558,6 +560,7 @@ export default function App() {
                     }}
                   />
                 )}
+                {tab === "code" && <CodeView onNotice={showToast} />}
                 {tab === "stats" && (
                   <StatsView
                     stats={state.stats}
