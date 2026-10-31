@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit",
     "test:integrations": "node scripts/verify-integrations.test.mjs",
     "test:apps": "node scripts/verify-apps.test.mjs",
-    "test": "npm run test:integrations && npm run test:apps && npm run test:code && npm run test:highlight && npm run test:codebase && npm run test:tools && npm run test:product && npm run test:production -- --fast",
+    "test": "npm run test:integrations && npm run test:apps && npm run test:code && npm run test:highlight && npm run test:codebase && npm run test:tools && npm run test:product && npm run test:shell && npm run test:production -- --fast",
     "list:apps": "powershell -ExecutionPolicy Bypass -File scripts/list-apps.ps1",
     "test:code": "node scripts/verify-code-engine.test.mjs",
     "test:highlight": "node scripts/verify-highlight.test.mjs",
@@ -29,7 +29,8 @@
     "qa": "npm run typecheck && npm run test:production",
     "qa:fast": "npm run test:production -- --fast",
     "qa:loop": "node scripts/qa-loop.mjs",
-    "test:product": "node scripts/verify-product.test.mjs"
+    "test:product": "node scripts/verify-product.test.mjs",
+    "test:shell": "node scripts/verify-shell.test.mjs"
   },
   "dependencies": {
     "electron-updater": "^6.8.11",

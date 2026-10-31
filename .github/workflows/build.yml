@@ -70,6 +70,12 @@ jobs:
       - name: Snippets, project scan and diagnostics
         run: npm run test:tools
 
+      - name: Capture, digest and instant search
+        run: npm run test:product
+
+      - name: Desktop shell (real main process against a stub Electron)
+        run: npm run test:shell
+
       - name: Production gauntlet (hostile input, bad requests, corrupt state)
         run: npm run test:production
 

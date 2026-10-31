@@ -233,7 +233,38 @@ check("the panel starts folded and only opens through its own state", () => {
 // dragging threw "cancelTween is not defined" inside the main process. Syntax
 // checks cannot see that, and the app is only tested by hand — so parse the
 // backend and main process and prove every called function exists.
-check("every function the backend calls is defined", async () => {
+check("a renamed helper cannot reach a build", async () => {
+  // The exact shape of the 0.4.1 crash: the call site keeps the old name.
+  const { parse } = await import("@babel/parser");
+  const traverseModule = await import("@babel/traverse");
+  const traverse = traverseModule.default?.default ?? traverseModule.default ?? traverseModule;
+  const sample = `
+    let handle = null;
+    function cancelPendingResize() { clearTimeout(handle); }
+    function begin() { cancelTween(); }
+  `;
+  const ast = parse(sample, { sourceType: "module" });
+  const found = [];
+  traverse(ast, {
+    CallExpression(nodePath) {
+      const callee = nodePath.node.callee;
+      if (callee.type !== "Identifier") return;
+      if (nodePath.scope.hasBinding(callee.name, true)) return;
+      if (callee.name in globalThis) return;
+      found.push(callee.name);
+    },
+    ReferencedIdentifier(nodePath) {
+      const { name } = nodePath.node;
+      if (nodePath.scope.hasBinding(name, true) || name in globalThis) return;
+      if (nodePath.parent.type === "CallExpression" && nodePath.parent.callee === nodePath.node) return;
+      found.push(name);
+    },
+  });
+  if (!found.includes("cancelTween")) return ["the checker missed the crash it exists to prevent"];
+  return [];
+});
+
+check("every name the backend mentions is defined", async () => {
   const { parse } = await import("@babel/parser");
   const traverseModule = await import("@babel/traverse");
   // CJS default-of-default, depending on how the loader unwraps it.
@@ -252,6 +283,20 @@ check("every function the backend calls is defined", async () => {
     for (const file of walk(path.join(APP, root))) {
       const ast = parse(read(file), { sourceType: "module", errorRecovery: true });
       traverse(ast, {
+        // Every identifier, not just `name()`: `setTimeout(cancelTween)` crashed
+        // exactly like `cancelTween()` did, and a call-only check missed it.
+        ReferencedIdentifier(nodePath) {
+          const { name } = nodePath.node;
+          if (name === "import" || name === "undefined") return;
+          if (nodePath.scope.hasBinding(name, true)) return;
+          if (name in globalThis) return;
+          if (/^(arguments|require|module|exports|__dirname|__filename|process|Buffer)$/.test(name)) return;
+          const parent = nodePath.parent;
+          // Property keys and imports are not references.
+          if (parent.type === "MemberExpression" && parent.property === nodePath.node && !parent.computed) return;
+          if (parent.type === "ObjectProperty" && parent.key === nodePath.node && !parent.computed) return;
+          problems.push(`${path.relative(APP, file)}:${nodePath.node.loc.start.line} uses ${name}, which does not exist`);
+        },
         CallExpression(nodePath) {
           const callee = nodePath.node.callee;
           if (callee.type !== "Identifier" || callee.name === "import") return;

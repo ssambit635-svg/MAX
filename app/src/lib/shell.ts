@@ -15,6 +15,7 @@ export interface MaxShellBridge {
   setAlwaysOnTop: (enabled: boolean) => void;
   onOpenPalette: (callback: () => void) => () => void;
   onCapture?: (callback: () => void) => () => void;
+  onShellError?: (callback: (payload: { channel: string; message: string }) => void) => () => void;
   onCollapse: (callback: () => void) => () => void;
   onPrefChanged: (callback: (prefs: { launchAtLogin?: boolean; alwaysOnTop?: boolean }) => void) => () => void;
 }

@@ -150,6 +150,10 @@ export default function App() {
       window.setTimeout(() => inputRef.current?.focus(), 260);
     });
     const offCollapse = bridge.onCollapse(() => setExpanded(false));
+    // The shell hit a problem. Say so once, quietly, and keep the pet usable.
+    const offShellError = bridge.onShellError?.((payload) => {
+      showToast(payload?.message || "The desktop shell hiccupped. Everything still works.", "error");
+    });
     // Capture from anywhere: the island opens with the cursor already in the box.
     const offCapture = bridge.onCapture?.(() => {
       setExpanded(true);
@@ -160,6 +164,7 @@ export default function App() {
       offPalette();
       offCollapse();
       offCapture?.();
+      offShellError?.();
     };
   }, []);
 
