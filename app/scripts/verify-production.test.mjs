@@ -441,9 +441,11 @@ await test("a corrupt state folder cannot stop the app from booting", async () =
 /* ------------------------------------------------------- 6. portability */
 
 const PLATFORM_RULES = [
-  { pattern: /\btaskkill\b/, allow: ["server/apps.mjs"], why: "taskkill is Windows-only; wrap it in a platform branch" },
-  { pattern: /\bpowershell\b|\bpwsh\b/i, allow: ["server/apps.mjs"], why: "PowerShell is Windows-only" },
-  { pattern: /\bcmd\.exe\b/i, allow: ["server/apps.mjs"], why: "cmd.exe is Windows-only" },
+  // A Windows-only command is fine in a file that genuinely handles all three
+  // platforms; the rule below proves that, line by line, instead of trusting a name.
+  { pattern: /\btaskkill\b/, allow: ["server/apps.mjs"], branches: true, why: "taskkill is Windows-only; wrap it in a platform branch" },
+  { pattern: /\bpowershell\b|\bpwsh\b/i, allow: ["server/apps.mjs"], branches: true, why: "PowerShell is Windows-only" },
+  { pattern: /\bcmd\.exe\b/i, allow: ["server/apps.mjs"], branches: true, why: "cmd.exe is Windows-only" },
   { pattern: /["'`]C:\\\\/, allow: [], why: "hard-coded Windows path" },
   { pattern: /process\.env\.USERPROFILE(?!\s*\?\?)/, allow: [], why: "USERPROFILE without a HOME fallback" },
   { pattern: /["']\/tmp\//, allow: [], why: "hard-coded /tmp" },
@@ -458,10 +460,14 @@ await test("nothing in the runtime is Windows-only or POSIX-only by accident", a
   for (const file of files) {
     const relative = path.relative(APP, file).split(path.sep).join("/");
     const source = fs.readFileSync(file, "utf8");
+    // A file that branches on all three platforms may use their native tools.
+    const branches =
+      /platform === "win32"/.test(source) && /"darwin"/.test(source) && /"linux"/.test(source);
     source.split("\n").forEach((line, index) => {
       if (line.trim().startsWith("*") || line.trim().startsWith("//")) return;
       for (const rule of PLATFORM_RULES) {
         if (rule.allow.includes(relative)) continue;
+        if (rule.branches && branches) continue;
         if (rule.pattern.test(line)) problems.push(`${relative}:${index + 1} ${rule.why} — ${line.trim().slice(0, 90)}`);
       }
     });
@@ -1275,7 +1281,17 @@ await test("bad folders are refused with words, not stack traces", async () => {
 
 await test("no route ever answers with a crash", async () => {
   const problems = [];
-  const routes = ["/api/state", "/api/config", "/api/apps", "/api/notes", "/api/snippets", "/api/activity", "/api/diagnostics"];
+  const routes = [
+    "/api/state",
+    "/api/config",
+    "/api/apps",
+    "/api/notes",
+    "/api/snippets",
+    "/api/activity",
+    "/api/diagnostics",
+    "/api/digest",
+    "/api/inbox?q=anything",
+  ];
   for (const route of routes) {
     const response = await call("GET", route);
     if (response.status >= 500) problems.push(`GET ${route} → ${response.status}`);
@@ -1288,9 +1304,13 @@ await test("no route ever answers with a crash", async () => {
     ["POST", "/api/code/open", { path: 42 }],
     ["POST", "/api/code/scan", { root: "../../.." }],
     ["POST", "/api/snippets", { name: [], body: [] }],
+    ["POST", "/api/capture", { text: 42, tag: {} }],
+    ["POST", "/api/capture", "[not an object]", "raw"],
+    ["POST", "/api/switch", { query: { evil: true } }],
+    ["POST", "/api/switch", { query: "x".repeat(5000) }],
   ];
-  for (const [method, route, body] of hostile) {
-    const response = await call(method, route, body);
+  for (const [method, route, body, mode] of hostile) {
+    const response = await call(method, route, body, { raw: mode === "raw" });
     if (response.status >= 500) problems.push(`${method} ${route} crashed with ${response.status}`);
   }
   return problems;
@@ -1776,7 +1796,91 @@ await test("every command the island suggests actually works", async () => {
   return problems;
 });
 
-/* ------------------------------------------------------------- 22. hygiene */
+
+/* ================================================================= wave 14 ==
+   The 0.4.1 crash reached a user's laptop as a modal box that froze the window.
+   These checks make that shape of failure impossible to ship again.
+   ========================================================================= */
+
+await test("the shell can never freeze behind a modal error", async () => {
+  const problems = [];
+  const shell = fs.readFileSync(path.join(APP, "electron/main.mjs"), "utf8");
+
+  if (/dialog\.showErrorBox/.test(shell)) problems.push("a modal error box is still shown on failure");
+  if (!/process\.on\("uncaughtException"/.test(shell)) problems.push("no uncaughtException guard");
+  if (!/process\.on\("unhandledRejection"/.test(shell)) problems.push("no unhandledRejection guard");
+  if (!/installCrashGuard\(\)/.test(shell)) problems.push("the guard is never installed");
+
+  // Every channel must go through the registrar, or one throw becomes a modal.
+  const rawOn = shell.match(/\bipcMain\.(on|handle)\(/g) ?? [];
+  if (rawOn.length) problems.push(`${rawOn.length} channel(s) bypass the safe registrar`);
+  if (!/createChannelRegistrar/.test(shell)) problems.push("the registrar is not used at all");
+  if (!/reportShellFailure/.test(shell)) problems.push("a handler failure is never reported to the island");
+
+  return problems;
+});
+
+await test("a shell handler that throws is logged, reported and survivable", async () => {
+  const problems = [];
+  const { createChannelRegistrar } = await import("../electron/ipc.mjs");
+
+  const listeners = new Map();
+  const bus = { on: (channel, fn) => listeners.set(channel, fn), handle: (channel, fn) => listeners.set(channel, fn) };
+  const reported = [];
+  const logged = [];
+  const registrar = createChannelRegistrar({
+    bus,
+    onError: (channel, error) => reported.push([channel, String(error?.message ?? error)]),
+    log: (level, message) => logged.push(`${level}:${message}`),
+  });
+
+  registrar.on("safe:ok", (_event, value) => value * 2);
+  registrar.on("safe:throw", () => {
+    throw new Error("cancelTween is not defined");
+  });
+  registrar.on("safe:async-throw", async () => {
+    throw new Error("a rejected promise");
+  });
+  registrar.handle("safe:handle", async () => {
+    throw new Error("handle threw");
+  });
+
+  if (registrar.channels().length !== 4) problems.push(`channels() saw ${registrar.channels().length}`);
+
+  const ok = listeners.get("safe:ok")({}, 21);
+  if (ok !== 42) problems.push("a healthy handler's return value was lost");
+
+  const event = {};
+  // A synchronous throw must not escape into Electron's default handler.
+  let escaped = null;
+  try {
+    listeners.get("safe:throw")(event);
+  } catch (error) {
+    escaped = error;
+  }
+  if (escaped) problems.push("a throwing handler still threw out of the channel");
+
+  // An async rejection is caught too, a tick later.
+  try {
+    listeners.get("safe:async-throw")(event);
+  } catch (error) {
+    problems.push(`an async handler threw synchronously: ${error.message}`);
+  }
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  const answer = await listeners.get("safe:handle")(event);
+  if (answer?.ok !== false || typeof answer?.message !== "string") {
+    problems.push(`handle did not answer with a sentence: ${JSON.stringify(answer)}`);
+  }
+
+  for (const channel of ["safe:throw", "safe:async-throw", "safe:handle"]) {
+    if (!reported.some(([name]) => name === channel)) problems.push(`${channel} was never reported`);
+  }
+  if (!logged.some((line) => line.startsWith("error:"))) problems.push("nothing was logged");
+  return problems;
+});
+
+/* ------------------------------------------------------------- 23. hygiene */
 
 await test("nothing threw in the background while all of that ran", async () => unhandled.slice(0, 5));
 

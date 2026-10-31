@@ -17,17 +17,17 @@ npm install
 npm test
 ```
 
-**Expect** — `168` lines starting with `PASS`, ending with `the app survives the gauntlet`, exit code 0.
-The seven suites are integrations (10), apps (21), code engine (40), highlight (7), codebase (10),
-tools (14), and the production gauntlet (66). `SKIP esbuild unavailable` on the highlight suite means
+**Expect** — `189` lines starting with `PASS`, ending with `the app survives the gauntlet`, exit code 0.
+The eight suites are integrations (10), apps (21), code engine (40), highlight (7), codebase (10),
+tools (14), and the product checks (9), shell checks (9), and the production gauntlet (68). `SKIP esbuild unavailable` on the highlight suite means
 you ran files before `npm install` — rerun it.
 
 **The three commands that matter**
 
 | Command | What it proves | Time |
 | --- | --- | --- |
-| `npm run qa` | typecheck, a real UI build, and all 66 hostile checks | ~35 s |
-| `npm run qa:fast` | the 66 checks without the build (skips tsc and vite) | ~8 s |
+| `npm run qa` | typecheck, a real UI build, and all 68 hostile checks | ~35 s |
+| `npm run qa:fast` | the 68 checks without the build (skips tsc and vite) | ~8 s |
 | `npm run qa:loop` | the same battery on every save while you work | watching |
 
 A failing check prints the file, the input and what actually happened, so the fix is

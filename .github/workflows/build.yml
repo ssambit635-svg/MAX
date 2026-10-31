@@ -2,6 +2,8 @@ name: Build MAX
 
 on:
   workflow_dispatch:
+  # mac/Linux packaging is slow, so it rides on main and manual runs only; a PR
+  # is still gated by Windows, which is the platform the app ships first-class.
   push:
     branches: [main]
     paths:
@@ -67,6 +69,12 @@ jobs:
 
       - name: Snippets, project scan and diagnostics
         run: npm run test:tools
+
+      - name: Capture, digest and instant search
+        run: npm run test:product
+
+      - name: Desktop shell (real main process against a stub Electron)
+        run: npm run test:shell
 
       - name: Production gauntlet (hostile input, bad requests, corrupt state)
         run: npm run test:production

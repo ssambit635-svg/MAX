@@ -1,99 +1,178 @@
-name: Release Windows installer
+name: Release MAX
 
-# The installer is the deliverable people actually run. Packaging on every push keeps
-# CI honest, but a downloadable build only appears here — run it by hand when you want
-# a release people can install.
+# A tag is the only thing that publishes. Pushing to main builds and checks;
+# tagging v0.6.0 creates the download page everyone else uses.
 on:
+  push:
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
-        description: "Version tag, e.g. v0.2.3"
+        description: 'Tag to publish (must already exist, e.g. v0.6.0)'
         required: true
-        default: v0.2.3
-      prerelease:
-        description: "Mark as pre-release"
-        type: boolean
-        default: false
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: '22'
+  # Every build here is unsigned: signing keys are the user's to provide.
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
 jobs:
-  release:
-    name: Build and publish
+  windows:
+    name: Windows installer
     runs-on: windows-latest
     defaults:
       run:
         working-directory: app
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: app/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Typecheck and build UI
-        run: npm run build
-
-      - name: Integration and app-resolver tests
-        run: npm test
-
-      - name: Package for Windows
-        shell: bash
-        env:
-          DEBUG: electron-builder
-        run: |
-          set -o pipefail
-          npx electron-builder --win --x64 --publish never 2>&1 | tee ../electron-builder.log
-
-      - name: Verify artefacts
-        shell: bash
-        run: |
-          ls -lh release/
-          test -n "$(ls release/*.exe 2>/dev/null)" || { echo "::error::no installer produced"; exit 1; }
-
-      - name: Show log on failure
-        if: failure()
-        shell: bash
-        run: tail -n 200 ../electron-builder.log || true
-
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm run qa
+      - run: npx electron-builder --win --x64 --publish never
+      - run: |
+          Get-ChildItem release/ | Format-Table Name, Length
+          if (-not (Get-ChildItem release/*.exe)) { Write-Host '::error::no installer'; exit 1 }
+          if (-not (Test-Path release/latest.yml)) { Write-Host '::error::no latest.yml for the updater'; exit 1 }
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ inputs.tag }}
-          name: MAX ${{ inputs.tag }}
-          prerelease: ${{ inputs.prerelease }}
-          generate_release_notes: true
-          body: |
-            ## Install
-
-            1. Download **MAX Setup ${{ inputs.tag }}.exe** below.
-            2. Run it. Windows SmartScreen may warn because the build is unsigned → **More info → Run anyway**.
-            3. MAX starts in the top-right of the screen as a small black pill. Click it to open.
-
-            `MAX ${{ inputs.tag }}.portable.exe` runs without installing anything.
-
-            ## First run
-
-            GitHub (`ssambit635-svg`) and LeetCode (`sambitswain25`) come pre-filled for the owner.
-            Everyone else enters their own handles in **Settings**.
-
-            ## What's new
-
-            - Apps are found where they are actually installed: Chrome, Edge, Word, WPS Office,
-              WhatsApp, Copilot, Camera. Firefox removed.
-            - **Actions** lists only the apps present on this machine, with an app-scan command
-              for anything missing.
-            - Real GitHub stats with the green contribution calendar, flat black island.
-          files: |
+          name: release-windows
+          path: |
             app/release/*.exe
-            app/release/*.yml
-          fail_on_unmatched_files: true
+            app/release/*.blockmap
+            app/release/latest.yml
+          if-no-files-found: error
+
+  macos:
+    name: macOS disk image
+    runs-on: macos-latest
+    # Unsigned and unnotarized; still useful, never a reason to withhold Windows.
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npx electron-builder --mac --arm64 --x64 --publish never
+      - run: ls -lh release/ && test -n "$(ls release/*.dmg 2>/dev/null)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: |
+            app/release/*.dmg
+            app/release/*.zip
+            app/release/latest-mac.yml
+          if-no-files-found: warn
+
+  linux:
+    name: Linux AppImage
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npx electron-builder --linux --x64 --publish never
+      - run: ls -lh release/ && test -n "$(ls release/*.AppImage 2>/dev/null)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: |
+            app/release/*.AppImage
+            app/release/latest-linux.yml
+          if-no-files-found: warn
+
+  publish:
+    name: Publish the release
+    needs: [windows, macos, linux]
+    if: always() && needs.windows.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Work out the version and check it matches package.json
+        id: meta
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="$(node -p "require('./app/package.json').version")"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::tag $TAG does not match package.json $VERSION — bump the version or fix the tag"
+            exit 1
+          fi
+          ls -la artifacts
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.meta.outputs.tag }}"
+          # Notes come from the changelog the app itself shows, so the download
+          # page and the pet never disagree.
+          node - <<'JS' > notes.md
+          const fs = require('node:fs');
+          const source = fs.readFileSync('app/src/lib/changelog.ts', 'utf8');
+          const version = require('./app/package.json').version;
+          const block = source.split(`version: "${version}"`)[1] ?? '';
+          const title = (block.match(/title: "([^"]+)"/) ?? [])[1] ?? `MAX ${version}`;
+          const changes = [...block.split('changes: [')[1].split(']')[0].matchAll(/"([^"]+)"/g)].map((m) => `- ${m[1]}`);
+          console.log(`## MAX ${version} — ${title}\n`);
+          console.log(changes.join('\n'));
+          console.log('\n### Downloads\n');
+          console.log('| Platform | File | Notes |');
+          console.log('| --- | --- | --- |');
+          console.log(`| Windows | \`MAX-${version}-win-x64.exe\` | Installer. SmartScreen will warn because this build is unsigned: **More info → Run anyway**. |`);
+          console.log(`| Windows (portable) | \`MAX-${version}-portable.exe\` | No install, no uninstaller. |`);
+          console.log(`| macOS | \`MAX-${version}.dmg\` | Apple silicon and Intel. First open: right-click the app → **Open**. |`);
+          console.log(`| Linux | \`MAX-${version}.AppImage\` | \`chmod +x\`, then run. |`);
+          JS
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "MAX ${{ steps.meta.outputs.version }}" --notes-file notes.md
+          else
+            gh release create "$TAG" --title "MAX ${{ steps.meta.outputs.version }}" --notes-file notes.md --verify-tag
+          fi
+          shopt -s nullglob
+          files=(artifacts/*.exe artifacts/*.dmg artifacts/*.zip artifacts/*.AppImage artifacts/*.blockmap artifacts/*.yml)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::nothing to publish"
+            exit 1
+          fi
+          gh release upload "$TAG" "${files[@]}" --clobber
+          gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size)"'

@@ -150,9 +150,21 @@ export default function App() {
       window.setTimeout(() => inputRef.current?.focus(), 260);
     });
     const offCollapse = bridge.onCollapse(() => setExpanded(false));
+    // The shell hit a problem. Say so once, quietly, and keep the pet usable.
+    const offShellError = bridge.onShellError?.((payload) => {
+      showToast(payload?.message || "The desktop shell hiccupped. Everything still works.", "error");
+    });
+    // Capture from anywhere: the island opens with the cursor already in the box.
+    const offCapture = bridge.onCapture?.(() => {
+      setExpanded(true);
+      setTab("now");
+      window.setTimeout(() => inputRef.current?.focus(), 220);
+    });
     return () => {
       offPalette();
       offCollapse();
+      offCapture?.();
+      offShellError?.();
     };
   }, []);
 
@@ -189,6 +201,7 @@ export default function App() {
   useEffect(() => {
     if (!state) return;
     const id = window.setInterval(async () => {
+      if (state?.config.prefs.performanceMode) return;
       try {
         const stats = await api.stats();
         setState((prev) => (prev ? { ...prev, stats } : prev));
@@ -197,7 +210,7 @@ export default function App() {
       }
     }, 60_000);
     return () => window.clearInterval(id);
-  }, [state !== null]);
+  }, [state !== null, state?.config.prefs.performanceMode]);
 
   /* ------------------------------------------------------------------ live */
 
@@ -210,7 +223,10 @@ export default function App() {
   /* --------------------------------------------------------------- idleness */
 
   useEffect(() => {
+    const quiet = state?.config.prefs.performanceMode === true;
     const id = window.setInterval(() => {
+      // Performance mode: the pet stays put, the clock still checks now and then.
+      if (quiet) return;
       const idleSeconds = (Date.now() - lastActionAt.current) / 1000;
       const limit = state?.config.prefs.idleSleepSeconds ?? 120;
       if (focusUntil && Date.now() < focusUntil) {
@@ -222,7 +238,7 @@ export default function App() {
       forceTick((tick) => tick + 1);
     }, 5000);
     return () => window.clearInterval(id);
-  }, [state?.config.prefs.idleSleepSeconds, focusUntil]);
+  }, [state?.config.prefs.idleSleepSeconds, focusUntil, state?.config.prefs.performanceMode]);
 
   useEffect(() => {
     if (!focusUntil) return;

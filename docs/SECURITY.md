@@ -60,8 +60,26 @@ written, with a sentence rather than a permission error. Hidden folders, `.ssh`,
 | `api.render.com` | Stats tab | Your Render key |
 | GitHub Releases | Update check (installed build only) | A version query, nothing else |
 
-Everything else is local. There is no third-party crash reporter: failures go to
-`%APPDATA%\MAX\state\logs\max.log`, which rotates at 256 KB and stays on disk.
+Everything else is local. There is no third-party crash reporter.
+
+Failures go to `%APPDATA%\MAX\state\logs\` — `max.log` for the service and
+`shell.log` for the desktop shell — both rotating at 256 KB and both staying on
+disk. They are redacted on the way in (tokens, e-mail addresses and home folders),
+so the file can be pasted into a bug report without a second look.
+
+## Why the app cannot freeze behind an error dialog
+
+A crash in the main process used to raise a modal box, which blocks the window
+underneath it — the island stayed visible but stopped dragging and stopped
+answering. Two rules prevent that now:
+
+1. every IPC channel is registered through `electron/ipc.mjs`, which logs and
+   reports a failure instead of letting it escape into Electron's default handler;
+2. uncaught exceptions and unhandled rejections are claimed by the shell, written
+   to `shell.log`, and shown as one sentence inside the island.
+
+`scripts/verify-shell.test.mjs` runs the real `electron/main.mjs` against a stub
+Electron on every build and calls every channel, so this cannot regress silently.
 
 ## Diagnostics
 

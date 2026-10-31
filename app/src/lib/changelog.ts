@@ -14,6 +14,22 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "0.6.0",
+    date: "2026-10-29",
+    title: "Capture, digest, switch",
+    changes: [
+      "Ctrl+Shift+Space from anywhere: type a line and it is kept in today's file.",
+      "“capture …”, “todo …” and “find in notes …” search every note instantly, accents included.",
+      "“digest” gives you today at a glance: what you did, what is open, your streaks.",
+      "“switch to <app>” brings a window forward instead of starting a second copy.",
+      "Performance mode: no background polling, no animation, for a busy laptop.",
+      "A shell error can no longer freeze the island behind a modal box: it is logged and shown as one sentence.",
+      "Dragging is clamped to the screen and recovers if a gesture is interrupted.",
+      "The desktop shell is now tested by running the real main process, so a renamed helper can never ship again.",
+      "Mac and Linux builds are produced alongside Windows; the install guide is in docs/RELEASE.md.",
+    ],
+  },
+  {
     version: "0.5.0",
     date: "2026-10-29",
     title: "Ready for any machine",

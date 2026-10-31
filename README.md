@@ -135,14 +135,21 @@ island never looks empty and you never mistake fake numbers for real ones.
 The full threat model lives in [`docs/SECURITY.md`](docs/SECURITY.md); certificate setup for
 signed builds is in [`docs/SIGNING.md`](docs/SIGNING.md).
 
-## Install it on Windows
+## Install it
 
-Every push to `main` builds real installers. Open the Actions tab → the latest **Build MAX** run →
-**Artifacts**, and download either:
+Open **[Releases](https://github.com/ssambit635-svg/MAX/releases)** and take the file for your machine:
 
-- **`MAX-windows-x64`** → `MAX-0.5.0-win-x64.exe` (installer, Start-menu shortcut, optional launch at
-  login) or `MAX-0.5.0-portable.exe` (single file, nothing installed)
-- `MAX-macos` / `MAX-linux` when those runners succeed
+| Your machine | File | First open |
+| --- | --- | --- |
+| Windows | `MAX-0.6.0-win-x64.exe` (or `-portable.exe`) | SmartScreen says "Windows protected your PC" because the build is unsigned → **More info → Run anyway** |
+| macOS (Apple silicon or Intel) | `MAX-0.6.0.dmg` | Right-click the app → **Open** → **Open** |
+| Linux | `MAX-0.6.0.AppImage` | `chmod +x MAX-*.AppImage && ./MAX-*.AppImage` |
+
+If there is no release yet, every push to `main` still builds real installers: Actions tab → the
+latest **Build MAX** run → **Artifacts** → `MAX-windows-x64`, `MAX-macos`, `MAX-linux`.
+
+Releasing is one tag; [`docs/RELEASE.md`](docs/RELEASE.md) has the steps, the unsigned-build caveats
+and the exact secrets that turn signing on.
 
 The same job runs on every pull request, so a Windows installer that would not build can never land
 on `main`. It goes one step further: it runs the installer silently, checks the installed layout

@@ -7,6 +7,8 @@ import { loadConfig } from "./store.mjs";
 
 const execFileAsync = promisify(execFile);
 const CACHE_MS = 60_000;
+/** On a laptop running on battery, a minute of staleness is cheaper than a poll. */
+const SLOW_CACHE_MS = 10 * 60_000;
 // How long the first request may wait for the network before it gets a placeholder.
 const FIRST_LOAD_BUDGET_MS = Number(process.env.MAX_STATS_BUDGET ?? 1200);
 const cache = new Map();
@@ -658,10 +660,22 @@ function refreshInBackground() {
  * - cold cache → wait at most FIRST_LOAD_BUDGET_MS, then answer with a placeholder
  *   and let the real numbers arrive over the live stream
  */
+/** Performance mode: no background polling, and a stale answer is good enough. */
+function quiet() {
+  try {
+    return Boolean(loadConfig()?.prefs?.performanceMode);
+  } catch {
+    return false;
+  }
+}
+
 export async function collectStats({ waitMs = FIRST_LOAD_BUDGET_MS } = {}) {
   const hit = cache.get("stats");
   if (hit) {
-    if (Date.now() - hit.at >= CACHE_MS) void refreshInBackground();
+    const age = Date.now() - hit.at;
+    // A quiet machine never refreshes behind the user's back.
+    if (!quiet() && age >= CACHE_MS) void refreshInBackground();
+    if (quiet() && age >= SLOW_CACHE_MS) void refreshInBackground();
     return hit.value;
   }
 

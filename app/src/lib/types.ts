@@ -107,6 +107,7 @@ export interface PublicConfig {
     launchAtLogin: boolean;
     alwaysOnTop: boolean;
     reduceMotion: boolean;
+    performanceMode: boolean;
     keepIslandOpen: boolean;
     idleSleepSeconds: number;
     language: string;

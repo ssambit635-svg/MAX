@@ -2,13 +2,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { blockedReason } from "./paths.mjs";
-import { loadConfig, saveConfig } from "./store.mjs";
+import { appendActivity, loadActivity, loadConfig, saveConfig } from "./store.mjs";
 import { APPS, addCustomApp, appCatalog, closeApp, findApp, launchApp, openUrl, removeCustomApp } from "./apps.mjs";
 import { scanMessage, scanProject } from "./code/project.mjs";
 import { readCodeFile } from "./code/files.mjs";
 import { review } from "./code/engine.mjs";
 import { detectLanguage } from "./code/languages.mjs";
 import { deleteSnippet, findSnippet, saveSnippet, snippetIndex } from "./snippets.mjs";
+import { capture, openTasks, search as searchNotes, todayEntries } from "./inbox.mjs";
+import { buildDigest } from "./digest.mjs";
+import { switchTo } from "./switch.mjs";
 
 const WEB_TARGETS = {
   github: (q) => (q ? `https://github.com/search?q=${encodeURIComponent(q)}` : "https://github.com"),
@@ -280,6 +283,60 @@ export async function handleCommand(rawInput) {
   }
   if (/^save (?:this )?file$/i.test(text) || /^new note$/i.test(text)) {
     return { ok: true, message: "Write the note and press ⌘/Ctrl + Enter to save it.", ui: { tab: "now", composer: "note" }, mood: "listening" };
+  }
+
+  // ---- Capture, digest, switch -------------------------------------------
+  const captureMatch = text.match(/^(?:capture|inbox|keep|log)\s+(.+)$/i);
+  if (captureMatch) {
+    const result = capture(captureMatch[1]);
+    if (!result.ok) return { ok: false, message: result.message, mood: "error" };
+    appendActivity({ kind: "note", title: "Captured a line", detail: captureMatch[1].slice(0, 120) });
+    return { ok: true, message: `Captured. ${result.name}`, ui: { tab: "now" }, mood: "celebrate" };
+  }
+  const todoMatch = text.match(/^(?:todo|task|remind me to)\s+(.+)$/i);
+  if (todoMatch) {
+    // Same file, but as an unticked box, so the digest can count it later.
+    const result = capture(`- [ ] ${todoMatch[1]}`, { tag: "todo" });
+    if (!result.ok) return { ok: false, message: result.message, mood: "error" };
+    appendActivity({ kind: "note", title: "Added a task", detail: todoMatch[1].slice(0, 120) });
+    return { ok: true, message: "On the list.", ui: { tab: "now" }, mood: "happy" };
+  }
+  if (/^(digest|today|my day|daily|brief|briefing|good morning)\b/i.test(lower)) {
+    const digest = buildDigest({ activity: loadActivity(), tasks: openTasks(), entries: todayEntries() });
+    const open = digest.tasks.length ? ` ${digest.tasks.length} open task${digest.tasks.length === 1 ? "" : "s"}.` : "";
+    return { ok: true, message: `${digest.headline}${open}`, ui: { tab: "now" }, mood: "happy" };
+  }
+  const switchMatch = text.match(/^(?:switch(?:\s+to)?|goto|go\s+to|bring up|focus(?:\s+on)?)\s+(.+)$/i);
+  if (switchMatch) {
+    // "focus 25" is the pomodoro; only letters here mean an app.
+    if (/^\d+$/.test(switchMatch[1].trim())) {
+      // fall through to the pomodoro handler by not claiming it
+    } else {
+      const result = await switchTo(switchMatch[1]);
+      return { ok: result.ok, message: result.message, ui: { tab: "actions" }, mood: result.ok ? "happy" : "error" };
+    }
+  }
+  const findNotes = text.match(/^(?:find in notes|search notes|note search|find note|look in notes)\s+(.+)$/i);
+  if (findNotes) {
+    const found = searchNotes(findNotes[1]);
+    if (!found.hits.length) return { ok: true, message: `Nothing in your notes about “${findNotes[1]}”.`, mood: "thinking" };
+    const best = found.hits[0];
+    return {
+      ok: true,
+      message: `${found.hits.length} found · ${best.name} line ${best.line}: “${best.snippet.slice(0, 70)}”`,
+      ui: { tab: "now" },
+      mood: "happy",
+    };
+  }
+  if (/^(performance|perf|battery|low power|eco)\s*mode$/i.test(lower)) {
+    const next = !loadConfig().prefs.performanceMode;
+    saveConfig({ prefs: { performanceMode: next } });
+    return {
+      ok: true,
+      message: next ? "Performance mode on: no polling, no animation." : "Performance mode off: back to normal.",
+      ui: { tab: "settings" },
+      mood: "idle",
+    };
   }
 
   // ---- Search -----------------------------------------------------------

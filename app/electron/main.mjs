@@ -1,9 +1,11 @@
-import { app, BrowserWindow, Menu, Tray, dialog, globalShortcut, ipcMain, nativeImage, screen, shell } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, nativeImage, screen, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkForUpdates, initUpdater, installUpdate, stopUpdater, updateStatus } from "./updater.mjs";
 import { clampToScreen, cleanWindowState, COLLAPSED, computeBounds, isOffScreen } from "./bounds.mjs";
+import { createChannelRegistrar } from "./ipc.mjs";
+import { describe, initLog, log, logError } from "./log.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -27,6 +29,19 @@ let currentMode = "collapsed";
 let serverStarted = false;
 let startupFailure = null;
 let dragOrigin = null;
+let dragWatchdog = null;
+
+/**
+ * One registrar for every channel. `channels` (the function) is rebuilt when the
+ * app is ready, so nothing here can be called before `ipcMain` exists.
+ */
+let channels = createChannelRegistrar({
+  bus: { on: () => undefined, handle: () => undefined },
+  onError: () => undefined,
+  log,
+});
+const on = (channel, handler) => channels.on(channel, handler);
+const handleChannel = (channel, handler) => channels.handle(channel, handler);
 
 /** The only hosts the island links to, checked again in the shell. */
 const TRUSTED_LINK_HOSTS = new Set(["github.com", "www.github.com", "leetcode.com", "www.leetcode.com", "render.com", "dashboard.render.com"]);
@@ -100,6 +115,21 @@ function setWindowBounds(bounds) {
   if (!resizable) win.setResizable(false);
 }
 
+/**
+ * A shell handler failed. The user gets a sentence in the island; the log gets the
+ * stack. Nothing here is allowed to throw — this runs from inside a catch block.
+ */
+function reportShellFailure(channel, error) {
+  logError(`${channel} failed`, error);
+  try {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send("max:shell-error", { channel, message: describe(error) });
+    }
+  } catch {
+    /* a broken window cannot be told about it */
+  }
+}
+
 function cancelPendingResize() {
   if (pendingResize) {
     clearTimeout(pendingResize);
@@ -163,8 +193,11 @@ async function startServer() {
   for (let offset = 0; offset < PORT_SEARCH_RANGE; offset++) {
     const port = PREFERRED_PORT + offset;
     try {
-      await service.startServer({ port, host: "127.0.0.1" });
-      BASE_URL = `http://127.0.0.1:${port}`;
+      // Trust the port the OS actually gave us, not the one we asked for: asking
+      // for 0 (a test, or a machine with a taken range) binds a random port, and
+      // the health check would then knock on the wrong door forever.
+      const bound = await service.startServer({ port, host: "127.0.0.1" });
+      BASE_URL = `http://127.0.0.1:${bound?.port ?? port}`;
       lastError = null;
       break;
     } catch (error) {
@@ -176,12 +209,8 @@ async function startServer() {
   serverStarted = true;
 
   if (lastError) {
-    console.error(`[max] could not start the local service: ${lastError.message}`);
-    dialog.showErrorBox(
-      "MAX could not start",
-      `The local MAX service could not open a port on this machine.\n\n${lastError.message}`,
-    );
-    app.quit();
+    logError("the local service could not open a port", lastError);
+    startupFailure = "The local MAX service could not open a port. Another app may be holding it — quit MAX and start it again.";
     return;
   }
 
@@ -372,6 +401,31 @@ function refreshTrayMenu() {
   );
 }
 
+/**
+ * The last net.
+ *
+ * Electron's default reaction to an uncaught error in the main process is a modal
+ * "A JavaScript error occurred" box. The window behind it stops responding, so the
+ * app looks broken and cannot be dragged — which is worse than the bug. Claiming
+ * these events keeps the pet alive; the details go to the log where they can
+ * actually be fixed.
+ */
+function installCrashGuard() {
+  process.on("uncaughtException", (error) => {
+    logError("uncaught exception in the main process", error);
+    reportShellFailure("main", error);
+  });
+  process.on("unhandledRejection", (reason) => {
+    logError("unhandled promise rejection", reason instanceof Error ? reason : describe(reason));
+    reportShellFailure("main", reason);
+  });
+  app.on("render-process-gone", (_event, _contents, details) => {
+    log("warn", `a renderer stopped: ${details?.reason ?? "unknown"}`, details?.exitCode);
+  });
+}
+
+installCrashGuard();
+
 const singleInstance = app.requestSingleInstanceLock();
 if (!singleInstance) {
   app.quit();
@@ -380,6 +434,9 @@ if (!singleInstance) {
 
   app.whenReady().then(async () => {
     app.setAppUserModelId("dev.max.companion");
+    initLog(app.getPath("userData"));
+    channels = createChannelRegistrar({ bus: ipcMain, onError: reportShellFailure, log });
+    log("info", `MAX starting ${app.getVersion()} on ${process.platform} ${process.arch}`);
     await startServer();
     createWindow();
     createTray();
@@ -387,10 +444,17 @@ if (!singleInstance) {
 
     if (startupFailure) return;
 
-    // Toggle, but through the renderer — main never resizes behind its back.
-    globalShortcut.register("CommandOrControl+Shift+Space", () => toggleWindow());
+    // Capture from anywhere: the island opens with the composer already waiting,
+    // which is the whole point of capture being cheap.
+    globalShortcut.register("CommandOrControl+Shift+Space", () => {
+      openIsland();
+      win?.webContents.send("max:palette", { mode: "capture" });
+      win?.webContents.send("max:capture");
+    });
+    // The plain toggle lives one key over, so both habits work.
+    globalShortcut.register("CommandOrControl+Shift+M", () => toggleWindow());
 
-    ipcMain.on("max:mode", (_event, payload) => {
+    on("max:mode", (_event, payload) => {
       const mode = payload?.mode === "expanded" ? "expanded" : "collapsed";
       const height = Number(payload?.height);
       applyMode(mode, Number.isFinite(height) && height > 0 ? Math.ceil(height) : null);
@@ -398,16 +462,24 @@ if (!singleInstance) {
 
 
     // Manual dragging: `-webkit-app-region: drag` would swallow the clicks that open the island.
-    ipcMain.on("max:drag-begin", (_event, point) => {
+    on("max:drag-begin", (_event, point) => {
       // A pending fold would move the window mid-drag, so drop it first.
       cancelPendingResize();
-      if (!win || typeof point?.screenX !== "number") return;
+      if (!win || win.isDestroyed() || !Number.isFinite(point?.screenX) || !Number.isFinite(point?.screenY)) return;
       const bounds = win.getBounds();
       dragOrigin = { screenX: point.screenX, screenY: point.screenY, x: bounds.x, y: bounds.y };
+      // If the pointer-up is lost (a window switch, a frozen renderer, a touchpad
+      // gesture that ends off-window) the gesture would follow the cursor forever.
+      if (dragWatchdog) clearTimeout(dragWatchdog);
+      dragWatchdog = setTimeout(() => {
+        dragWatchdog = null;
+        dragOrigin = null;
+      }, 20_000);
     });
 
-    ipcMain.on("max:drag-move", (_event, point) => {
-      if (!win || !dragOrigin || !Number.isFinite(point?.screenX) || !Number.isFinite(point?.screenY)) return;
+    on("max:drag-move", (_event, point) => {
+      if (!win || win.isDestroyed() || !dragOrigin) return;
+      if (!Number.isFinite(point?.screenX) || !Number.isFinite(point?.screenY)) return;
       const wanted = {
         ...win.getBounds(),
         x: Math.round(dragOrigin.x + (point.screenX - dragOrigin.screenX)),
@@ -421,36 +493,40 @@ if (!singleInstance) {
 
     // The Settings switches are the single source of truth for the OS login item and
     // always-on-top; the tray menu reflects the same state instead of guessing.
-    ipcMain.on("max:login-item", (_event, enabled) => {
+    on("max:login-item", (_event, enabled) => {
       app.setLoginItemSettings({ openAtLogin: Boolean(enabled), openAsHidden: true });
       refreshTrayMenu();
     });
 
-    ipcMain.on("max:always-on-top", (_event, enabled) => {
+    on("max:always-on-top", (_event, enabled) => {
       alwaysOnTop = Boolean(enabled);
       win?.setAlwaysOnTop(alwaysOnTop, alwaysOnTop ? "screen-saver" : "normal");
       refreshTrayMenu();
     });
 
-    ipcMain.on("max:open-external", (_event, url) => {
+    on("max:open-external", (_event, url) => {
       // Only the places the island itself links to: a renderer that has been
       // talked into opening something else must not reach the browser.
       openTrustedUrl(url);
     });
 
-    ipcMain.on("max:drag-end", () => {
+    on("max:drag-end", () => {
+      if (dragWatchdog) {
+        clearTimeout(dragWatchdog);
+        dragWatchdog = null;
+      }
       dragOrigin = null;
       const bounds = win?.getBounds();
       if (bounds) writeWindowState({ x: Math.round(bounds.x + bounds.width / 2), y: bounds.y });
     });
-    ipcMain.on("max:quit", () => {
+    on("max:quit", () => {
       quitting = true;
       app.quit();
     });
 
-    ipcMain.handle("max:update-status", () => updateStatus());
-    ipcMain.on("max:update-check", () => void checkForUpdates());
-    ipcMain.on("max:update-install", () => installUpdate());
+    handleChannel("max:update-status", () => updateStatus());
+    on("max:update-check", () => void checkForUpdates());
+    on("max:update-install", () => installUpdate());
 
     app.on("activate", () => {
       if (!win) createWindow();
@@ -460,11 +536,6 @@ if (!singleInstance) {
 
   app.on("window-all-closed", () => {
     if (quitting) app.quit();
-  });
-
-  process.on("uncaughtException", (error) => {
-    console.error("[max] uncaught", error);
-    if (app.isReady()) dialog.showErrorBox("MAX hit an unexpected error", String(error?.stack ?? error));
   });
 
   app.on("before-quit", () => {
