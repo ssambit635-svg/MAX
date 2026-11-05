@@ -1,4 +1,26 @@
-export type Tab = "now" | "code" | "stats" | "actions" | "settings";
+export type Tab = "now" | "agents" | "code" | "stats" | "actions" | "settings";
+
+export interface AgentSessionEvent {
+  provider: "claude-code" | "codex" | "cursor" | "gemini-cli";
+  type: string;
+  sessionId: string;
+  requestId: string | null;
+  project: string;
+  title: string;
+  text: string;
+  at: number;
+}
+
+export interface AgentSession {
+  provider: AgentSessionEvent["provider"];
+  sessionId: string;
+  project: string;
+  title: string;
+  status: "working" | "waiting" | "finished" | "error";
+  updatedAt: number;
+  pending: { type: "question" | "permission-request"; requestId: string; text: string; at: number } | null;
+  events: AgentSessionEvent[];
+}
 
 export type Mood =
   | "idle"

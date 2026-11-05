@@ -17,6 +17,7 @@ export const LANGUAGES: { id: Language; label: string }[] = [
 
 type Key =
   | "tab.now"
+  | "tab.agents"
   | "tab.code"
   | "tab.stats"
   | "tab.actions"
@@ -41,6 +42,7 @@ const DICTIONARIES: Record<Language, Partial<Record<Key, string>>> = {
   en: {},
   hi: {
     "tab.now": "अभी",
+    "tab.agents": "एजेंट",
     "tab.code": "कोड",
     "tab.stats": "आँकड़े",
     "tab.actions": "काम",
@@ -65,6 +67,7 @@ const DICTIONARIES: Record<Language, Partial<Record<Key, string>>> = {
 
 const FALLBACK: Record<Key, string> = {
   "tab.now": "Now",
+  "tab.agents": "Agents",
   "tab.code": "Code",
   "tab.stats": "Stats",
   "tab.actions": "Actions",
