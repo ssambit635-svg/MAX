@@ -16,6 +16,8 @@ import { clearLog, diagnosticsSummary, logEvent, readLog, redact } from "./diagn
 import { capture, highlightSnippet, openTasks, search as searchInbox, todayEntries } from "./inbox.mjs";
 import { buildDigest, digestLine } from "./digest.mjs";
 import { switchTo } from "./switch.mjs";
+import { listSessions, ingestAgentEvent, onSessionsChanged } from "./agents/sessions.mjs";
+import { validAgentHookAuthorization } from "./agents/token.mjs";
 
 // Loopback by default: an island on a café Wi-Fi must not be reachable from the
 // next table. Anything wider has to be asked for explicitly (a dev preview).
@@ -64,6 +66,8 @@ function broadcast(event, payload) {
     }
   }
 }
+
+onSessionsChanged((sessions) => broadcast("agent-sessions", { sessions }));
 
 const MAX_BODY_BYTES = Number(process.env.MAX_MAX_BODY ?? 2_000_000);
 
@@ -123,6 +127,19 @@ async function handleApi(req, res, url) {
 
   if (route === "GET /api/health") {
     return sendJson(res, 200, { ok: true, name: "MAX", version: VERSION, uptimeSeconds: Math.round(process.uptime()) });
+  }
+
+  if (route === "GET /api/agents/sessions") {
+    return sendJson(res, 200, { sessions: listSessions() });
+  }
+
+  if (route === "POST /api/agents/events") {
+    if (!validAgentHookAuthorization(req.headers.authorization)) {
+      return sendJson(res, 401, { ok: false, message: "That agent hook is not authorized." });
+    }
+    const body = await readBody(req);
+    const result = ingestAgentEvent(body);
+    return sendJson(res, result.ok ? 202 : 400, result);
   }
 
   if (route === "GET /api/events") {

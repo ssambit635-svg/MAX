@@ -2,7 +2,7 @@ import { t } from "./i18n";
 import type { Mood, Tab } from "./types";
 
 /** The five tabs, in the order they appear in the island header. */
-export const TABS: { id: Tab }[] = [{ id: "now" }, { id: "code" }, { id: "stats" }, { id: "actions" }, { id: "settings" }];
+export const TABS: { id: Tab }[] = [{ id: "now" }, { id: "agents" }, { id: "code" }, { id: "stats" }, { id: "actions" }, { id: "settings" }];
 
 /** Tab label in the current language. */
 export const tabLabel = (id: Tab): string => t(`tab.${id}` as const);

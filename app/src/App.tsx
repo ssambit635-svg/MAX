@@ -5,6 +5,7 @@ import { StatsView } from "./components/StatsView";
 import { ActionsView } from "./components/ActionsView";
 import { CodeView } from "./components/CodeView";
 import { SettingsView } from "./components/SettingsView";
+import { AgentSessionsView } from "./components/AgentSessionsView";
 import { Boundary } from "./components/Boundary";
 import { StarterCard } from "./components/StarterCard";
 import { api } from "./lib/api";
@@ -16,12 +17,13 @@ import { setLanguage } from "./lib/i18n";
 import { isDesktopShell, moodLine, tabLabel, TABS } from "./lib/ui";
 import { useLiveStream } from "./lib/useLiveStream";
 import { useWindowDrag } from "./lib/useWindowDrag";
-import type { CommandResult, IntegrationId, Mood, StatePayload, Tab } from "./lib/types";
+import type { AgentSession, CommandResult, IntegrationId, Mood, StatePayload, Tab } from "./lib/types";
 
 const IS_SHELL = isDesktopShell();
 
 export default function App() {
   const [state, setState] = useState<StatePayload | null>(null);
+  const [agentSessions, setAgentSessions] = useState<AgentSession[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   // The panel is unmounted once it has folded. Leaving it mounted inside a
@@ -66,6 +68,12 @@ export default function App() {
     try {
       const payload = await api.state();
       setState(payload);
+      try {
+        const agents = await api.agentSessions();
+        setAgentSessions(agents.sessions);
+      } catch {
+        /* Agent session monitoring is optional; the rest of MAX stays available. */
+      }
       setLoadError(null);
       setCaption(
         payload.activity[0]?.detail ??
@@ -218,6 +226,7 @@ export default function App() {
     onActivity: (activity) => setState((prev) => (prev ? { ...prev, activity } : prev)),
     onNotes: (notes) => setState((prev) => (prev ? { ...prev, notes } : prev)),
     onStats: (stats) => setState((prev) => (prev ? { ...prev, stats } : prev)),
+    onAgentSessions: setAgentSessions,
   });
 
   /* --------------------------------------------------------------- idleness */
@@ -645,6 +654,7 @@ export default function App() {
                     }}
                   />
                 )}
+                {tab === "agents" && <AgentSessionsView sessions={agentSessions} />}
                 {tab === "code" && <CodeView onNotice={showToast} initial={pendingCode} onConsumeInitial={() => setPendingCode(null)} />}
                 {tab === "stats" && (
                   <StatsView

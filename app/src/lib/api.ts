@@ -1,4 +1,5 @@
 import type {
+  AgentSession,
   AppEntry,
   CodeFile,
   DiagnosticsPayload,
@@ -36,6 +37,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   state: () => request<StatePayload>("/api/state"),
+  agentSessions: () => request<{ sessions: AgentSession[] }>("/api/agents/sessions"),
   stats: (force = false) => request<Stats>(`/api/stats${force ? "?force=1" : ""}`),
   command: (input: string) => request<CommandResult>("/api/command", { method: "POST", body: JSON.stringify({ input }) }),
   saveNote: (text: string, name?: string) =>

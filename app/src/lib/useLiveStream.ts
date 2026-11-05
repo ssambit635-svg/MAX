@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
-import type { StatePayload } from "./types";
+import type { AgentSession, StatePayload } from "./types";
 
 interface LiveHandlers {
   onActivity: (activity: StatePayload["activity"]) => void;
   onNotes: (notes: StatePayload["notes"]) => void;
   onStats?: (stats: StatePayload["stats"]) => void;
+  onAgentSessions?: (sessions: AgentSession[]) => void;
 }
 
 /**
@@ -14,9 +15,9 @@ interface LiveHandlers {
  * Reconnects with a growing backoff, and exposes whether the stream is currently
  * up so callers can fall back to local updates while it is down.
  */
-export function useLiveStream({ onActivity, onNotes, onStats }: LiveHandlers) {
+export function useLiveStream({ onActivity, onNotes, onStats, onAgentSessions }: LiveHandlers) {
   const alive = useRef(false);
-  const handlers = useRef<LiveHandlers>({ onActivity, onNotes, onStats });
+  const handlers = useRef<LiveHandlers>({ onActivity, onNotes, onStats, onAgentSessions });
   handlers.current = { onActivity, onNotes };
 
   useEffect(() => {
@@ -59,6 +60,15 @@ export function useLiveStream({ onActivity, onNotes, onStats }: LiveHandlers) {
           handlers.current.onStats?.(payload.stats);
         } catch {
           /* ignore */
+        }
+      });
+
+      source.addEventListener("agent-sessions", (event) => {
+        try {
+          const payload = JSON.parse((event as MessageEvent).data) as { sessions: AgentSession[] };
+          handlers.current.onAgentSessions?.(payload.sessions);
+        } catch {
+          /* malformed provider events never break the stream */
         }
       });
 
