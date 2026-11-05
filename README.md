@@ -48,9 +48,12 @@ things that are safe to fix automatically:
 The editor itself colours the file as you type (keywords, strings, comments, numbers, functions,
 tags, attributes, CSS properties), with a line gutter that flags every problem line.
 
-Press **Fix** and it applies only behaviour-preserving edits (`==` → `===`, `var` → `let`,
-`== None` → `is None`, whitespace, doctype, `lang`). A file with a structural error is never
-rewritten — MAX names the line and asks you to fix that first.
+Press **Fix** and MAX applies only mechanical edits such as whitespace cleanup, CSS zero-unit
+normalization, and missing HTML doctype/lang attributes. Findings like JavaScript `==`, `var`, Python
+`== None`, and bare `except:` remain suggestions: changing them can alter behavior or scope, so MAX
+will not rewrite them automatically. A file with a structural error is never rewritten — MAX names
+the line and asks you to fix that first. The reviewer is a lightweight heuristic, not a compiler or
+security auditor; review its findings and run your project's own tests before relying on a change.
 
 
 ## Keeping it clean
@@ -133,7 +136,9 @@ island never looks empty and you never mistake fake numbers for real ones.
   redacted report you copy yourself — tokens, e-mail and folder names are stripped first.
 
 The full threat model lives in [`docs/SECURITY.md`](docs/SECURITY.md); certificate setup for
-signed builds is in [`docs/SIGNING.md`](docs/SIGNING.md).
+signed builds is in [`docs/SIGNING.md`](docs/SIGNING.md). Packaged releases should also pass the
+[real-desktop acceptance checklist](docs/ACCEPTANCE.md). MAX is a focused local action companion,
+not a general-purpose conversational assistant.
 
 ## Install it
 

@@ -2,10 +2,9 @@
  * The rule book.
  *
  * Every rule is a plain function over text — no network, no model, no compiler.
- * A rule can be checked (find issues) and, when it is safe, fixed (rewrite the text).
- * "Safe" means the fix cannot change behaviour: whitespace, `==` → `===`, `var` →
- * `let`, `except:` → `except Exception:`. Anything that needs judgement is reported
- * with a hint and left alone.
+ * Rules can report issues; only mechanical transformations are eligible for automatic
+ * fixes. Semantics-dependent findings (equality, exception handling, variable scope)
+ * remain suggestions because rewriting them can change program behavior.
  */
 
 import { delimiterProblems, indentProfile, lineOf, replaceAt, splitLines } from "./syntax.mjs";
@@ -190,21 +189,13 @@ const pythonRules = [
     title: "Compare to None with is",
     hint: "`is None` is the correct, faster test; `== None` can be overloaded by a class.",
     langs: ["python"],
-    fixable: true,
     check(ctx) {
       return matches(ctx.masked, /(==|!=)\s*None\b/).map((match) => ({
         line: lineOf(ctx.masked, match.index),
         message: `Use “${match[1] === "==" ? "is" : "is not"} None”.`,
       }));
     },
-    fix(code, ctx) {
-      const edits = matches(ctx.masked, /(==|!=)\s*None\b/).map((match) => ({
-        start: match.index,
-        end: match.index + match[0].length,
-        text: match[1] === "==" ? "is None" : "is not None",
-      }));
-      return edits.length ? replaceAt(code, edits) : null;
-    },
+
   },
   {
     id: "py-bare-except",
@@ -212,21 +203,13 @@ const pythonRules = [
     title: "Bare except",
     hint: "`except:` swallows KeyboardInterrupt and typos. Catch Exception instead.",
     langs: ["python"],
-    fixable: true,
     check(ctx) {
       return matches(ctx.masked, /^([ \t]*)except\s*:/gm).map((match) => ({
         line: lineOf(ctx.masked, match.index),
         message: "Bare `except:` catches everything.",
       }));
     },
-    fix(code, ctx) {
-      const edits = matches(ctx.masked, /^([ \t]*)except\s*:/gm).map((match) => ({
-        start: match.index,
-        end: match.index + match[0].length,
-        text: `${match[1]}except Exception:`,
-      }));
-      return edits.length ? replaceAt(code, edits) : null;
-    },
+
   },
   {
     id: "py-is-literal",
@@ -234,21 +217,13 @@ const pythonRules = [
     title: "`is` compared with a literal",
     hint: "`is` tests identity. Use `==` for strings, numbers and True/False.",
     langs: ["python"],
-    fixable: true,
     check(ctx) {
       return matches(ctx.masked, /\bis\s+(not\s+)?(?=\s*("|'|\d|True\b|False\b))/).map((match) => ({
         line: lineOf(ctx.masked, match.index),
         message: "Identity check against a literal.",
       }));
     },
-    fix(code, ctx) {
-      const edits = matches(ctx.masked, /\bis(\s+not)?\s+(?="|'|\d|True\b|False\b)/g).map((match) => ({
-        start: match.index,
-        end: match.index + match[0].length,
-        text: match[1] ? " != " : " == ",
-      }));
-      return edits.length ? replaceAt(code, edits) : null;
-    },
+
   },
   {
     id: "py-mutable-default",
@@ -339,20 +314,13 @@ const jsRules = [
     title: "Loose equality",
     hint: "`==` converts types (`'' == 0` is true). Use `===` / `!==`.",
     langs: JS_TS,
-    fixable: true,
     check(ctx) {
       return matches(ctx.masked, /(^|[^=!<>])([=!]=)(?![=>])(?!\s*(null|undefined)\b)/g).map((match) => ({
         line: lineOf(ctx.masked, match.index),
         message: `Use “${match[2]}==”.`,
       }));
     },
-    fix(code, ctx) {
-      const edits = matches(ctx.masked, /(^|[^=!<>])([=!]=)(?![=>])(?!\s*(null|undefined)\b)/g).map((match) => {
-        const offset = match.index + match[1].length;
-        return { start: offset, end: offset + 2, text: match[2] === "==" ? "===" : "!==" };
-      });
-      return edits.length ? replaceAt(code, edits) : null;
-    },
+
   },
   {
     id: "js-var",
@@ -360,21 +328,13 @@ const jsRules = [
     title: "`var` in modern code",
     hint: "`var` leaks out of blocks. Prefer `const`, or `let` when it must change.",
     langs: JS_TS,
-    fixable: true,
     check(ctx) {
       return matches(ctx.masked, /\bvar\s+\w/).map((match) => ({
         line: lineOf(ctx.masked, match.index),
         message: "Declared with var.",
       }));
     },
-    fix(code, ctx) {
-      const edits = matches(ctx.masked, /\bvar(\s+\w)/g).map((match) => ({
-        start: match.index,
-        end: match.index + 3,
-        text: "let",
-      }));
-      return edits.length ? replaceAt(code, edits) : null;
-    },
+
   },
   {
     id: "js-debugger",
