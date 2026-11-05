@@ -87,7 +87,8 @@ export function review(code, languageId) {
 }
 
 /**
- * Apply every safe fix, in an order that keeps later rules valid.
+ * Apply mechanical fixes only, in an order that keeps later rules valid. Semantics-dependent
+ * findings remain suggestions; they must never be treated as proof that code is correct.
  * @returns {{ ok: true, code: string, applied: {rule,title,count}[], review: object, changed: boolean }}
  */
 export function applyFixes(code, languageId) {

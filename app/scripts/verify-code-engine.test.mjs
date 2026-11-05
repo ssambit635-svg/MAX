@@ -110,20 +110,22 @@ for (const [language, [code, expected]] of Object.entries(fixtures)) {
 
 /* ------------------------------------------------------------------ fixes -- */
 
-check("safe fixes rewrite Python correctly", () => {
+check("semantic Python suggestions are reported but never auto-rewritten", () => {
   const before = "def f(a):\n    if a == None:\n        pass\n    try:\n        pass\n    except:\n        pass";
-  const after = applyFixes(before, "python");
-  assert.equal(after.ok, true);
-  assert.equal(after.changed, true);
-  assert.ok(after.code.includes("if a is None:"), after.code);
-  assert.ok(after.code.includes("except Exception:"), after.code);
-  assert.ok(after.code.endsWith("\n"), "final newline not added");
+  const result = applyFixes(before, "python");
+  assert.equal(result.ok, true);
+  assert.equal(result.code.replace(/\n$/, ""), before);
+  assert.equal(result.changed, true, "only mechanical final-newline cleanup is allowed");
+  assert.ok(result.review.issues.some((issue) => issue.rule === "py-none-compare"));
+  assert.ok(result.review.issues.some((issue) => issue.rule === "py-bare-except"));
 });
 
-check("safe fixes turn == into === for JavaScript", () => {
-  const after = applyFixes('if (a == "1" && b != 2) {}\n', "javascript");
-  assert.ok(after.code.includes('a === "1"'), after.code);
-  assert.ok(after.code.includes("b !== 2"), after.code);
+check("loose equality is diagnosed but never auto-converted", () => {
+  const before = 'if (a == "1" && b != 2) {}\n';
+  const after = applyFixes(before, "javascript");
+  assert.equal(after.code, before);
+  assert.equal(after.changed, false);
+  assert.ok(after.review.issues.some((issue) => issue.rule === "js-loose-equality"));
 });
 
 check("== null is left alone (it is idiomatic)", () => {
@@ -131,10 +133,11 @@ check("== null is left alone (it is idiomatic)", () => {
   assert.ok(after.code.includes("a == null"), after.code);
 });
 
-check("var becomes let, debugger is removed", () => {
-  const after = applyFixes("var a = 1\ndebugger;\n", "javascript");
-  assert.ok(after.code.includes("let a = 1"), after.code);
-  assert.ok(!after.code.includes("debugger"), after.code);
+check("var is reported without changing its scope semantics", () => {
+  const before = "var a = 1\ndebugger;\n";
+  const after = applyFixes(before, "javascript");
+  assert.equal(after.code, "var a = 1\n");
+  assert.ok(after.review.issues.some((issue) => issue.rule === "js-var"));
 });
 
 check("CSS zero units are dropped", () => {

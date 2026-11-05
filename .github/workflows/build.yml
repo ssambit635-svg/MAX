@@ -77,7 +77,9 @@ jobs:
         run: npm run test:shell
 
       - name: Production gauntlet (hostile input, bad requests, corrupt state)
-        run: npm run test:production
+        # Typecheck and the production UI build already ran above; skip re-running
+        # both expensive checks inside the gauntlet to avoid redundant CI work.
+        run: npm run test:production -- --fast
 
       - name: Smoke-test the local service
         run: |
