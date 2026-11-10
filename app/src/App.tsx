@@ -17,13 +17,14 @@ import { setLanguage } from "./lib/i18n";
 import { isDesktopShell, moodLine, tabLabel, TABS } from "./lib/ui";
 import { useLiveStream } from "./lib/useLiveStream";
 import { useWindowDrag } from "./lib/useWindowDrag";
-import type { AgentSession, CommandResult, IntegrationId, Mood, StatePayload, Tab } from "./lib/types";
+import type { AgentProviderStatus, AgentSession, CommandResult, IntegrationId, Mood, StatePayload, Tab } from "./lib/types";
 
 const IS_SHELL = isDesktopShell();
 
 export default function App() {
   const [state, setState] = useState<StatePayload | null>(null);
   const [agentSessions, setAgentSessions] = useState<AgentSession[]>([]);
+  const [agentProviders, setAgentProviders] = useState<AgentProviderStatus[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   // The panel is unmounted once it has folded. Leaving it mounted inside a
@@ -39,6 +40,12 @@ export default function App() {
   const [caption, setCaption] = useState("");
   const [toast, setToast] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
   const [input, setInput] = useState("");
+  const [recentCommands, setRecentCommands] = useState<string[]>(() => {
+    try {
+      const saved: unknown = JSON.parse(window.localStorage.getItem("max.recent-commands.v1") ?? "[]");
+      return Array.isArray(saved) ? saved.filter((item): item is string => typeof item === "string" && item.length <= 180).slice(0, 5) : [];
+    } catch { return []; }
+  });
   const [busy, setBusy] = useState(false);
   const [gaze, setGaze] = useState({ x: 0, y: 0 });
   const [highlight, setHighlight] = useState<IntegrationId | null>(null);
@@ -69,8 +76,9 @@ export default function App() {
       const payload = await api.state();
       setState(payload);
       try {
-        const agents = await api.agentSessions();
+        const [agents, providers] = await Promise.all([api.agentSessions(), api.agentProviders()]);
         setAgentSessions(agents.sessions);
+        setAgentProviders(providers.providers);
       } catch {
         /* Agent session monitoring is optional; the rest of MAX stays available. */
       }
@@ -327,6 +335,13 @@ export default function App() {
       try {
         const result: CommandResult = await api.command(command);
         showToast(result.message, result.ok ? "ok" : "error");
+        if (result.ok) {
+          setRecentCommands((items) => {
+            const next = [command, ...items.filter((item) => item !== command)].slice(0, 5);
+            try { window.localStorage.setItem("max.recent-commands.v1", JSON.stringify(next)); } catch { /* optional convenience */ }
+            return next;
+          });
+        }
         if (result.ui?.tab) {
           setTab(result.ui.tab);
           setExpanded(true);
@@ -479,10 +494,11 @@ export default function App() {
   /* ------------------------------------------------------------ suggestions */
 
   const suggestions: Suggestion[] = useMemo(() => {
-    const extra: Suggestion[] =
+    const appSuggestions: Suggestion[] =
       state?.apps.map((app) => ({ cmd: `open ${app.terms[0]}`, desc: app.label, group: "Apps" })) ?? [];
-    return filterSuggestions(input, extra);
-  }, [input, state?.apps]);
+    const recent: Suggestion[] = recentCommands.map((cmd) => ({ cmd, desc: "Recent command · local history", group: "Recent" }));
+    return filterSuggestions(input, [...recent, ...appSuggestions]);
+  }, [input, state?.apps, recentCommands]);
 
   useEffect(() => setSuggestIndex(0), [input]);
 
@@ -652,9 +668,10 @@ export default function App() {
                       setNoteOpen(true);
                       setTab("now");
                     }}
+                    onNotice={showToast}
                   />
                 )}
-                {tab === "agents" && <AgentSessionsView sessions={agentSessions} />}
+                {tab === "agents" && <AgentSessionsView sessions={agentSessions} providers={agentProviders} onProviders={setAgentProviders} onSessions={setAgentSessions} onNotice={showToast} />}
                 {tab === "code" && <CodeView onNotice={showToast} initial={pendingCode} onConsumeInitial={() => setPendingCode(null)} />}
                 {tab === "stats" && (
                   <StatsView

@@ -7,6 +7,8 @@ export interface MaxShellBridge {
   dragMove: (screenX: number, screenY: number) => void;
   dragEnd: () => void;
   openExternal: (url: string) => void;
+  chooseProjectFolder: () => Promise<{ ok: boolean; path?: string; canceled?: boolean; message?: string }>;
+  openProjectFolder: (folder: string) => Promise<{ ok: boolean; message?: string }>;
   setLoginItem: (enabled: boolean) => void;
   updateStatus: () => Promise<{ state: string; version: string | null; message: string }>;
   checkForUpdates: () => void;

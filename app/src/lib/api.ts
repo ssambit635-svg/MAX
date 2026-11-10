@@ -1,4 +1,5 @@
 import type {
+  AgentProviderStatus,
   AgentSession,
   AppEntry,
   CodeFile,
@@ -38,6 +39,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   state: () => request<StatePayload>("/api/state"),
   agentSessions: () => request<{ sessions: AgentSession[] }>("/api/agents/sessions"),
+  clearAgentSessions: () => request<{ ok: boolean; sessions: AgentSession[] }>("/api/agents/sessions", { method: "DELETE" }),
+  agentProviders: () => request<{ providers: AgentProviderStatus[] }>("/api/agents/providers"),
+  previewAgentReply: (provider: AgentSession["provider"], sessionId: string, requestId: string, text: string) =>
+    request<{ ok: boolean; confirmationId: string; provider: AgentSession["provider"]; sessionId: string; project: string; title: string; text: string; expiresAt: number; mode: "resume-cli" | "copy-only"; intent: "follow-up" | "question-reply"; message: string }>("/api/agents/replies/preview", {
+      method: "POST", body: JSON.stringify({ provider, sessionId, requestId, text }),
+    }),
+  confirmAgentReply: (confirmationId: string) =>
+    request<{ ok: boolean; message: string; mode?: "copy-only" | "resume-cli" }>("/api/agents/replies/confirm", {
+      method: "POST", body: JSON.stringify({ confirmationId }),
+    }),
+  previewAgentHooks: (provider: string, action: "install" | "uninstall") =>
+    request<{ ok: boolean; provider: string; action: "install" | "uninstall"; settingsPath: string; fingerprint: string; diff: string }>("/api/agents/hooks/preview", {
+      method: "POST", body: JSON.stringify({ provider, action }),
+    }),
+  applyAgentHooks: (provider: string, action: "install" | "uninstall", fingerprint: string) =>
+    request<{ ok: boolean; action: "install" | "uninstall"; providers: AgentProviderStatus[]; backup: string | null }>("/api/agents/hooks/apply", {
+      method: "POST", body: JSON.stringify({ provider, action, fingerprint }),
+    }),
   stats: (force = false) => request<Stats>(`/api/stats${force ? "?force=1" : ""}`),
   command: (input: string) => request<CommandResult>("/api/command", { method: "POST", body: JSON.stringify({ input }) }),
   saveNote: (text: string, name?: string) =>

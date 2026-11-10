@@ -1,4 +1,5 @@
 import { Pet } from "./Pet";
+import { ProjectsView } from "./ProjectsView";
 import { clockTime, durationLabel, timeAgo } from "../lib/format";
 import type { Mood, StatePayload } from "../lib/types";
 
@@ -17,6 +18,7 @@ interface NowViewProps {
   onRun: (command: string) => void;
   onPoke: () => void;
   onOpenNote: () => void;
+  onNotice: (text: string, tone: "ok" | "error") => void;
 }
 
 /** Show the folder the way a person reads it: `~/Documents/MAX notes`. */
@@ -46,6 +48,7 @@ export function NowView({
   onRun,
   onPoke,
   onOpenNote,
+  onNotice,
 }: NowViewProps) {
   const { vscode, github, render } = state.stats;
   const { notes, activity, config: settings } = state;
@@ -62,6 +65,8 @@ export function NowView({
         <div className="mood-label">{mood === "working" ? "in focus" : mood}</div>
         <div className="mood-caption">{caption || "I'm here. Ask me for anything small."}</div>
       </div>
+
+      <ProjectsView onNotice={onNotice} />
 
       <div className="grid" style={{ alignContent: "start" }}>
         <div className="card">
