@@ -1,217 +1,167 @@
-# MAX — a calm desktop companion
+<div align="center">
 
-MAX is a small, always-visible friend that lives on your desktop and does the tiny jobs that
-break your flow: open an app, save a note, start a focus block, or show you the numbers from your
-own GitHub, LeetCode, Render and VS Code.
+# MAX
 
-It is **not** an AI, it has **no voice**, and it never calls a cloud model. Every action comes from a
-hand-written command table, so MAX is instant, inspectable and predictable.
+### A calm, local-first desktop companion for the small tasks around your work.
 
-> Design language: a macOS-style dynamic island — flat, opaque near-black ("zed black") surfaces, slow
-> eased motion and a pet drawn
-> entirely in code, so every expression is honest and sharp at any size.
+**Open tools. Save thoughts. Stay focused. Pick up where you left off.**
+
+[Windows downloads](https://github.com/ssambit635-svg/MAX/releases) · [Quick start](docs/QUICKSTART-WINDOWS.md) · [QA test plan](docs/QA-TEST-PLAN.md) · [Security](docs/SECURITY.md) · [Report a bug](https://github.com/ssambit635-svg/MAX/issues)
+
+![Build](https://github.com/ssambit635-svg/MAX/actions/workflows/build.yml/badge.svg)
+
+</div>
 
 ---
 
-## What it looks like
+## What MAX is
 
-```
-┌──────────────────────────────────────────────┐
-│  ◕  MAX │ ● ready            6 commits · 3/3 │  ← the pill, always on top
-└──────────────────────────────────────────────┘
+MAX is a small desktop companion that brings everyday developer actions into one keyboard-friendly place: open an app, save a note, start a focus timer, inspect local project files, and see information from integrations you choose to connect.
 
-expand it (click, or ⌘/Ctrl + K)
-┌────────────────────────────────────────────────────────────────┐
-│ ◕ MAX   now · code · stats · actions · settings                 │
-├───────────────────────┬────────────────────────────────────────┤
-│      ◕  (the pet)     │  Right now                             │
-│   in focus / happy    │  ● VS Code · max-companion             │
-│   "Opened Chrome."    │  ● 3/3 live on Render · 6 commits      │
-└───────────────────────┴────────────────────────────────────────┘
-```
+MAX is **not** a generative AI, voice assistant, code agent, or replacement for an IDE. It does not call a cloud model. Its command behavior is hand-written and deterministic, so supported actions are explicit rather than improvised.
 
-The pet lives **inside the island** and nowhere else — no second window floating over your work.
-It follows your cursor with its eyes, taps back when poked, and naps when you are idle. Drag the
-pill (or the panel header) to move MAX anywhere on screen; a plain click opens it.
+**Windows is the primary desktop target.** The project also contains macOS and Linux packaging targets; those should be treated as less-tested until verified on those systems.
 
-### Code that corrects itself
+## A quick visual
 
-A tiny rule engine lives in the island — no local model, no compiler, no network. Open the
-**Code** tab, paste a file (or open one), and MAX reviews it across 15 languages and fixes the
-things that are safe to fix automatically:
+The diagram below describes the real interaction model—not a screenshot or product mockup:
 
-- **errors** — unbalanced brackets, unterminated strings, broken JSON, `gets()`, `DELETE` without `WHERE`
-- **warnings** — `==` on strings in Java, bare `except:`, mutable default arguments, `unwrap()`,
-  empty `catch`, missing `#include`, `<img>` without `alt`
-- **hints** — `var`, `console.log`, `0px`, `!important`, unused imports, long lines, TODOs
-
-The editor itself colours the file as you type (keywords, strings, comments, numbers, functions,
-tags, attributes, CSS properties), with a line gutter that flags every problem line.
-
-Press **Fix** and MAX applies only mechanical edits such as whitespace cleanup, CSS zero-unit
-normalization, and missing HTML doctype/lang attributes. Findings like JavaScript `==`, `var`, Python
-`== None`, and bare `except:` remain suggestions: changing them can alter behavior or scope, so MAX
-will not rewrite them automatically. A file with a structural error is never rewritten — MAX names
-the line and asks you to fix that first. The reviewer is a lightweight heuristic, not a compiler or
-security auditor; review its findings and run your project's own tests before relying on a change.
-
-
-## Keeping it clean
-
-Six test suites run in CI on every push, and they are as much about code health as behaviour:
-
-| Command | Guards |
-|---|---|
-| `npm run test:integrations` | every verify branch (bad handle, 401, 403, rate limit) |
-| `npm run test:apps` | the app allowlist and the Windows resolver (aliases, Store ids, fallbacks) |
-| `npm run test:code` | every language fixture, every safe fix, file guards |
-| `npm run test:highlight` | colours per language, no lost characters, HTML escaping |
-| `npm run test:codebase` | dead CSS rules, unused exports, dead preferences, version drift, routes that do not exist |
-| `npm run test:tools` | folder scans, snippet store, custom launchers, diagnostics redaction |
-
-`test:codebase` is the housekeeper: add a setting nobody reads, a style nobody uses or an export
-nobody imports, and it fails with the exact name.
-
-## The pet
-
-Drawn in SVG + CSS — no sprite sheets, no Rive, no Lottie, no image files. Eight live expressions,
-each driven by what is actually happening:
-
-| Mood | When | What you see |
-|---|---|---|
-| `idle` | nothing happening | slow breathing, blinking, antenna halo pulse |
-| `listening` | you are typing a command | eyes widen, sonar rings |
-| `thinking` | a command is running | thought dots, slight tilt |
-| `working` | a focus block is running | scanline sweep, focused lids |
-| `happy` | success | hop, arc eyes, sparkles |
-| `celebrate` | note saved, focus finished | confetti, bounce |
-| `sleepy` | idle for 2 minutes | closed eyes, floating `z z z` |
-| `error` | the command failed | red antenna, furrowed brows, a sweat drop |
-
-## Commands
-
-Type in the palette (or click a chip). Fuzzy suggestions appear as you type; `↑ ↓` to move,
-`Tab` to complete, `↵` to run, `Esc` to close.
-
-```
-open chrome            open vs code          open notepad        open terminal
-open explorer          open spotify          open settings       close chrome
-search github for vite search youtube for lofi search leetcode  google <query>
-save note <text>       new note              focus 25            timer 10
-stats                  stats github          stats leetcode      stats render
-check ~/proj/main.py   scan ~/proj           add app Figma: C:\…\Figma.exe
-save snippet debounce: <code>                snippet debounce     snippets
-delete snippet <name>  remove app Figma
-help                   sleep                 wake
+```text
+       Ctrl / ⌘ + K
+             │
+             ▼
+┌──────────────────────────────┐
+│ MAX island                   │
+│ palette · notes · focus      │
+│ projects · code · sessions   │
+└──────────────┬───────────────┘
+               │ typed, allowlisted request
+               ▼
+┌──────────────────────────────┐
+│ Local MAX service            │
+│ rules · file guards · state  │
+└─────┬──────────────────┬─────┘
+      │                  │
+      ▼                  ▼
+Your device         Optional services
+notes, settings,    GitHub · LeetCode ·
+project paths,      Render · agent CLIs
+session metadata    (only when configured)
 ```
 
-`check` reviews a single file, `scan` walks a whole folder (depth 6, 400 files, skips
-`node_modules`, `.git` and dotfiles) and ranks it by score. `save snippet` keeps a fragment
-for later — `snippet <name>` puts it on the clipboard. `add app` registers a launcher of
-your own so it appears in Actions and answers to `open <name>`.
+### Screenshots and demo video
 
-Apps are launched from an **explicit allowlist** — MAX cannot run an arbitrary shell command, and
-closing an app is a graceful request (`taskkill` / `quit` / `pkill`), never a force kill.
+This repository does not currently contain verified screenshots or a screen-recording of the running desktop app. I’m intentionally not substituting generated mockups for real product captures. The screenshots/video can be added once captured from a real MAX build; until then, use the [Windows quick start](docs/QUICKSTART-WINDOWS.md) and [QA plan](docs/QA-TEST-PLAN.md) to see and verify the actual flows.
 
-## Integrations
+## What you can do
 
-| Source | Where the data comes from | Needs a key? |
-|---|---|---|
-| GitHub | REST API (`/user`, `/repos`, `/events`) — commits today, this week, open PRs, languages, stars | username, token optional for private repos/rate limits |
-| LeetCode | public GraphQL endpoint — solved by difficulty, streak, 28-day heatmap, ranking | just your handle |
-| Render | Render API v1 — service health and the latest deploy per service | read-only API key |
-| VS Code | reads VS Code's own `workspaceStorage` on this machine — running state + recent folders | nothing, it is local |
-| This machine | `os.cpus()` / `os.freemem()` — CPU, memory, uptime | nothing |
+| Workflow | What MAX provides |
+| --- | --- |
+| **Command palette** | Fuzzy suggestions, keyboard navigation, allowlisted app launches, and a small local history of successful commands. `Ctrl+K` opens it; `Esc` closes it. |
+| **Project shortcuts** | Save up to 12 project folder names and paths on this device. In the desktop app, open a shortcut in the file manager; in browser preview, copy its path. These are bookmarks, not full editor/terminal launch configurations. |
+| **Notes and capture** | Save Markdown notes, capture a thought or task, search notes, and review a daily digest. |
+| **Focus** | Start a focus block or timer and see its status in the island. |
+| **Code utilities** | Review supported source files with lightweight rules, scan a bounded project folder, manage snippets, and apply only safe mechanical fixes. This is not a compiler or security auditor. |
+| **App actions** | Find available apps, open allowlisted apps, and manage supported custom launchers. MAX does not accept arbitrary shell commands. |
+| **Stats** | View local machine and VS Code information, plus GitHub, LeetCode, and Render data when you configure those integrations. Demo data is labeled. |
+| **Agent sessions (opt-in / evolving)** | Review lifecycle-hook setup before applying, inspect recent session metadata, and clear MAX's in-memory session list. Confirmed direct replies are enabled only for supported CLI paths; otherwise MAX uses a copy fallback. See the limitations below before enabling hooks. |
 
-Until something is connected, that card shows **demo** data with a one-click path to Settings, so the
-island never looks empty and you never mistake fake numbers for real ones.
+## Agent-session safety and current limits
 
-## Privacy
+Agent support is still evolving. Hook configuration is provider-specific and has **not** been validated against every real provider version and Windows installation. Keep hook setup opt-in; review the exact preview and backup; use a throwaway profile for early testing. Do not install hooks into a work profile until that provider's configuration and lifecycle behavior have been validated.
 
-- No account, no telemetry, no cloud model, no voice, no microphone.
-- Credentials and preferences live in `.max/config.json` on your machine (`chmod 600`).
-- Notes are plain `.md` files in a folder you choose (default `~/Documents/MAX notes`).
-- The only network calls are the ones you asked for by connecting an integration.
-- Failures are logged locally in `.max/logs/max.log` (rotating, 256 KB). Settings can build a
-  redacted report you copy yourself — tokens, e-mail and folder names are stripped first.
+Direct replies use documented resume forms for supported Codex and Gemini CLI paths. Claude Code and Cursor Agent remain copy-only until their current CLI contracts are verified. Every reply requires a preview and a separate confirmation; MAX must not simulate terminal keystrokes or approve tool permissions. See [`docs/AGENT-SESSIONS.md`](docs/AGENT-SESSIONS.md) for the implementation contract and [`docs/QA-TEST-PLAN.md`](docs/QA-TEST-PLAN.md) for safe isolated testing.
 
-The full threat model lives in [`docs/SECURITY.md`](docs/SECURITY.md); certificate setup for
-signed builds is in [`docs/SIGNING.md`](docs/SIGNING.md). Packaged releases should also pass the
-[real-desktop acceptance checklist](docs/ACCEPTANCE.md). MAX is a focused local action companion,
-not a general-purpose conversational assistant.
+## Privacy model
 
-## Install it
+- MAX has no account, telemetry, microphone, voice feature, or built-in cloud model.
+- Notes, settings, project shortcuts, command history, and session snippets are stored locally. Project shortcuts and palette history use the current browser/app profile; server state is held in MAX's local state directory.
+- External integrations make network requests only when you configure/use them. GitHub, LeetCode, and Render data therefore require internet access.
+- Agent lifecycle events are sent to the local MAX service using a local token. Session snippets are kept in memory and can be cleared.
+- Review the [security notes](docs/SECURITY.md) and [agent-session contract](docs/AGENT-SESSIONS.md) before connecting credentials or changing provider settings.
 
-Open **[Releases](https://github.com/ssambit635-svg/MAX/releases)** and take the file for your machine:
+“Local-first” does not mean every feature is offline: integrations need the network, provider CLIs are separate software, and MAX cannot guarantee how those tools use their own configured permissions.
 
-| Your machine | File | First open |
-| --- | --- | --- |
-| Windows | `MAX-0.6.0-win-x64.exe` (or `-portable.exe`) | SmartScreen says "Windows protected your PC" because the build is unsigned → **More info → Run anyway** |
-| macOS (Apple silicon or Intel) | `MAX-0.6.0.dmg` | Right-click the app → **Open** → **Open** |
-| Linux | `MAX-0.6.0.AppImage` | `chmod +x MAX-*.AppImage && ./MAX-*.AppImage` |
+## Install and try MAX
 
-If there is no release yet, every push to `main` still builds real installers: Actions tab → the
-latest **Build MAX** run → **Artifacts** → `MAX-windows-x64`, `MAX-macos`, `MAX-linux`.
+### Windows: use a CI build artifact
 
-Releasing is one tag; [`docs/RELEASE.md`](docs/RELEASE.md) has the steps, the unsigned-build caveats
-and the exact secrets that turn signing on.
+1. Open the repository's [Actions](https://github.com/ssambit635-svg/MAX/actions) page and select a successful **Build MAX** run.
+2. Download the Windows installer or portable artifact from that run. Prefer a successful run on the branch/commit you intend to test.
+3. Verify the download source and filename. Builds are currently unsigned, so Windows SmartScreen may show a warning. Do not run a file whose source you cannot verify.
+4. Install or launch the portable build, then follow [`docs/QUICKSTART-WINDOWS.md`](docs/QUICKSTART-WINDOWS.md).
+5. Work through the [practical QA checklist](docs/QA-TEST-PLAN.md) and record blocked tests separately from passes.
 
-The same job runs on every pull request, so a Windows installer that would not build can never land
-on `main`. It goes one step further: it runs the installer silently, checks the installed layout
-(`MAX.exe`, `app.asar`, the unpacked local service) and checks that `latest.yml` was produced for
-the updater, then uninstalls itself.
+The [Releases page](https://github.com/ssambit635-svg/MAX/releases) is the place to look for a published release. Do not assume a release exists just because CI produced an artifact.
 
-An installed build updates itself from GitHub Releases — 30 seconds after launch, then every six
-hours. It downloads in the background and only installs when you press **Restart to install**.
+### Development setup
 
-**Ready to test it?** [`docs/TESTING.md`](docs/TESTING.md) walks through every 0.4.0 feature one at a
-time — what to click, what you should see, and what a failure means.
-
-**New to it on Windows?** [`docs/QUICKSTART-WINDOWS.md`](docs/QUICKSTART-WINDOWS.md) has the exact
-install steps (including the SmartScreen step for an unsigned build) and a 10-minute test plan.
-
-## Run it
+Requirements: Node.js 20 or newer and npm. From the repository root:
 
 ```bash
 cd app
-npm install
-npm run dev        # island UI on :5173 with the local service on :7999
-npm run desktop    # real always-on-top desktop app (Electron)
-npm run dist:win   # Windows installer + portable exe
+npm ci
+npm run dev
 ```
 
-`npm run dev` is a browser preview of the same island; `npm run desktop` is the real thing — the
-transparent always-on-top window (the island itself is opaque), tray icon, global hotkey (`⌘/Ctrl + Shift + Space`) and
-launch-at-login.
+Open the Vite URL printed by the command for a browser preview. The API runs locally alongside it. The preview is useful for UI work; it cannot validate desktop-only behaviors such as the native project folder picker, tray, global shortcuts, window movement, or installer.
+
+To build and launch the Electron desktop app:
+
+```bash
+cd app
+npm run desktop
+```
+
+To build the web UI only:
+
+```bash
+cd app
+npm run build
+```
 
 ## Architecture
 
-```
-app/
-├── server/            Node HTTP service — no framework, no database
-│   ├── index.mjs      REST + SSE, serves the built island, file-safe static
-│   ├── commands.mjs   the deterministic command brain + app allowlist
-│   ├── integrations.mjs  GitHub / LeetCode / Render / VS Code / system, 60 s cache
-│   └── store.mjs      JSON config + note writer
-├── src/               React + TypeScript island
-│   ├── App.tsx        pill ⇄ island choreography, keyboard, suggestions, moods
-│   ├── components/    Pet (SVG), Now, Stats, Actions, Settings
-│   └── styles.css     the whole design system
-├── electron/          desktop shell: transparent window, tray, hotkey, drag IPC
-└── docs/              quickstart, product + command reference
+```mermaid
+flowchart LR
+  U[Developer] -->|keyboard, mouse| R[React island renderer]
+  R <-->|same-origin HTTP and SSE| S[Local Node service]
+  R <-->|narrow IPC bridge| E[Electron main process]
+  E -->|folder picker, tray, window controls| OS[Windows desktop]
+  S -->|bounded reads and writes| D[(Local MAX state and notes)]
+  S -->|only when configured| G[GitHub / LeetCode / Render APIs]
+  S -->|opt-in hooks and confirmed actions| A[Supported local agent CLIs]
 ```
 
-The UI talks to the service over `/api/*` (proxied by Vite in dev, same origin in Electron), and the
-service pushes activity, notes and settings changes over `text/event-stream` so the island updates
-the moment a command lands.
+- **Renderer:** React + TypeScript island UI, palette, views, and local browser-profile conveniences.
+- **Local service:** Node HTTP API, deterministic command routing, file-safe code helpers, optional integrations, and bounded local session registry.
+- **Desktop shell:** Electron window, tray, global shortcuts, narrow preload/IPC surface, and desktop folder selection.
+- **Persistence:** local JSON state and notes; user-facing paths are configurable. No hosted MAX backend is required for normal desktop use.
 
-## Status
+## Verification
 
-Working today: island + pill (click to open, drag to move), the pet with eight expressions, command
-palette with fuzzy suggestions, first-run guide, note saving, focus timer,
-GitHub/LeetCode/Render/VS Code/system stats, folder-wide code scans, snippet library, custom app
-launchers, self-update, redacted diagnostics, English/Hindi chrome, settings for all of the above,
-tray, global hotkey, CI that typechecks, smokes the API, packages the Windows installer and installs
-it to prove it works.
+Run checks from `app/`:
 
-Next: signing the installer (needs a certificate — see `docs/SIGNING.md`), the UI pass, and themes.
+```bash
+npm ci
+npm run build
+npm test
+```
+
+`npm test` runs the integration, app resolver, code engine, syntax highlighting, codebase, tool, product, desktop-shell, agent-boundary, and fast production suites. It validates automated behavior; it does **not** replace a manual Windows install/upgrade/agent-provider test. The [QA test plan](docs/QA-TEST-PLAN.md) separates those real-device checks and includes a defect report template.
+
+## Documentation
+
+- [Windows quick start](docs/QUICKSTART-WINDOWS.md) — install and first practical checks.
+- [QA test plan](docs/QA-TEST-PLAN.md) — ordered manual acceptance plan and safe AI-assisted triage prompt.
+- [Commands](docs/COMMANDS.md) — command reference.
+- [Agent sessions](docs/AGENT-SESSIONS.md) — scope, safety boundaries, and launch gates.
+- [Security](docs/SECURITY.md) — security and privacy notes.
+- [Acceptance checklist](docs/ACCEPTANCE.md) — desktop acceptance expectations.
+- [Release guide](docs/RELEASE.md) and [signing notes](docs/SIGNING.md) — packaging and current unsigned-build caveats.
+
+## Contributing
+
+Bug reports are most useful when they include the MAX version, Windows version, test steps, expected behavior, actual behavior, and whether the issue reproduces after restart. **Redact** credentials, usernames, folder names, private project names, and agent text from logs or screenshots before sharing. Never attach provider configuration files that contain secrets.
+
+MAX is a deterministic local companion, not an AI coding agent. Contributions should preserve the product's explicit-action model, local control, bounded file access, and user confirmation for consequential actions.
