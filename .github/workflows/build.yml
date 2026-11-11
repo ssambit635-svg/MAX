@@ -177,9 +177,11 @@ jobs:
           }
 
           $exit = 'unknown'
+          $nsisLog = Join-Path $env:RUNNER_TEMP 'max-nsis-install.log'
           for ($attempt = 1; $attempt -le 2; $attempt++) {
+            Remove-Item $nsisLog -Force -ErrorAction SilentlyContinue
             try {
-              $proc = Start-Process -FilePath $installer.FullName -ArgumentList '/S', '/currentuser' -PassThru
+              $proc = Start-Process -FilePath $installer.FullName -ArgumentList '/S', '/currentuser', "/LOG=$nsisLog" -PassThru
               $proc.WaitForExit(300000) | Out-Null
               $exit = $proc.ExitCode
             } catch {
@@ -187,6 +189,11 @@ jobs:
               $exit = 'threw'
             }
             Say notice "installer attempt ${attempt} exit code: $exit"
+            if (Test-Path $nsisLog) {
+              Get-Content $nsisLog -Tail 30 | ForEach-Object { Say notice "NSIS: $_" }
+            } else {
+              Say warning "NSIS did not create its install log"
+            }
             if ($exit -eq 0) { break }
             if (Test-Path (Join-Path (Join-Path $env:LOCALAPPDATA 'Programs\MAX') 'MAX.exe')) { break }
             Start-Sleep -Seconds 10
