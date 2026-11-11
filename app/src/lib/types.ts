@@ -11,6 +11,15 @@ export interface AgentSessionEvent {
   at: number;
 }
 
+export interface AgentProviderStatus {
+  provider: AgentSessionEvent["provider"];
+  settingsPath: string;
+  events: string[];
+  installed: boolean;
+  canInstall: boolean;
+  canReply: boolean;
+}
+
 export interface AgentSession {
   provider: AgentSessionEvent["provider"];
   sessionId: string;

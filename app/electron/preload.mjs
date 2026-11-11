@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld("maxShell", {
   dragMove: (screenX, screenY) => ipcRenderer.send("max:drag-move", { screenX, screenY }),
   dragEnd: () => ipcRenderer.send("max:drag-end"),
   openExternal: (url) => ipcRenderer.send("max:open-external", url),
+  chooseProjectFolder: () => ipcRenderer.invoke("max:choose-project"),
+  openProjectFolder: (folder) => ipcRenderer.invoke("max:open-project-folder", folder),
   updateStatus: () => ipcRenderer.invoke("max:update-status"),
   checkForUpdates: () => ipcRenderer.send("max:update-check"),
   installUpdate: () => ipcRenderer.send("max:update-install"),

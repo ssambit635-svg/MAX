@@ -86,6 +86,12 @@ export function ingestAgentEvent(input, now = Date.now()) {
   return { ok: true, session: snapshot(session) };
 }
 
+export function getAgentSession(provider, sessionId, now = Date.now()) {
+  prune(now);
+  const session = sessions.get(`${provider}:${sessionId}`);
+  return session ? snapshot(session) : null;
+}
+
 export function listSessions(now = Date.now()) {
   prune(now);
   return [...sessions.values()]
@@ -97,6 +103,12 @@ export function onSessionsChanged(listener) {
   if (typeof listener !== "function") return () => {};
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+/** Clear the in-memory session transcript snippets without removing SSE listeners. */
+export function clearAgentSessions() {
+  sessions.clear();
+  notify();
 }
 
 /** Test-only reset; deliberately not exposed through an HTTP route. */

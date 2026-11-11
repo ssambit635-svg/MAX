@@ -2,7 +2,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { APP_ROOT, appendActivity, loadActivity, loadConfig, publicConfig, saveConfig } from "./store.mjs";
+import { APP_ROOT, STATE_DIR, appendActivity, loadActivity, loadConfig, publicConfig, saveConfig } from "./store.mjs";
 import { appCatalog, handleCommand, recentNotes, saveNote } from "./commands.mjs";
 import { probeApps } from "./apps.mjs";
 import { rejectForeignCaller } from "./origin.mjs";
@@ -16,8 +16,12 @@ import { clearLog, diagnosticsSummary, logEvent, readLog, redact } from "./diagn
 import { capture, highlightSnippet, openTasks, search as searchInbox, todayEntries } from "./inbox.mjs";
 import { buildDigest, digestLine } from "./digest.mjs";
 import { switchTo } from "./switch.mjs";
-import { listSessions, ingestAgentEvent, onSessionsChanged } from "./agents/sessions.mjs";
-import { validAgentHookAuthorization } from "./agents/token.mjs";
+import { listSessions, ingestAgentEvent, onSessionsChanged, clearAgentSessions } from "./agents/sessions.mjs";
+import { validAgentHookAuthorization, publishAgentRuntime } from "./agents/token.mjs";
+import { agentProviderInfo, editAgentHookConfig, buildHookCommand, hookPlanFingerprint, previewDiff, writeAgentConfigAtomically, AGENT_HOOK_MARKER, assertSafeAgentSettingsPath } from "./agents/hooks.mjs";
+import { findAgentCli, prepareAgentReply, confirmAgentReply } from "./agents/replies.mjs";
+import os from "node:os";
+import { execFileSync } from "node:child_process";
 
 // Loopback by default: an island on a café Wi-Fi must not be reachable from the
 // next table. Anything wider has to be asked for explicitly (a dev preview).
@@ -122,6 +126,55 @@ function serveFile(res, file) {
   });
 }
 
+
+function availableNodePath() {
+  if (!process.versions.electron) return process.execPath;
+  try {
+    const executable = process.platform === "win32" ? "where.exe" : "which";
+    const found = execFileSync(executable, ["node"], { encoding: "utf8", timeout: 1500 }).split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+    return found || null;
+  } catch { return null; }
+}
+
+function agentHookSettings() {
+  const nodePath = availableNodePath();
+  return agentProviderInfo(os.homedir()).map((provider) => {
+    let installed = false;
+    try {
+      assertSafeAgentSettingsPath(provider.settingsPath);
+      const stat = fs.lstatSync(provider.settingsPath);
+      if (stat.isFile() && !stat.isSymbolicLink()) installed = fs.readFileSync(provider.settingsPath, "utf8").includes(AGENT_HOOK_MARKER);
+    } catch { /* missing settings means not installed */ }
+    return { provider: provider.provider, settingsPath: provider.settingsPath, events: provider.events, installed, canInstall: Boolean(nodePath), canReply: Boolean(findAgentCli(provider.provider)) };
+  });
+}
+
+function makeAgentHookPlan(providerId, action) {
+  if (!new Set(["install", "uninstall"]).has(action)) throw new HttpError(400, "Choose install or uninstall.");
+  const provider = agentProviderInfo(os.homedir()).find((entry) => entry.provider === providerId);
+  if (!provider) throw new HttpError(400, "That coding agent is not supported.");
+  const file = provider.settingsPath;
+  let source = "";
+  try {
+    assertSafeAgentSettingsPath(file);
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new HttpError(409, "That agent settings path is not a regular file. MAX left it untouched.");
+    source = fs.readFileSync(file, "utf8");
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    if (error.code !== "ENOENT") throw new HttpError(409, "MAX could not safely read that agent settings file.");
+  }
+  const nodePath = availableNodePath();
+  if (action === "install" && !nodePath) throw new HttpError(409, "Node.js is required for the local agent hook. Install Node.js, then try again.");
+  const scriptPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "agents", "hook.mjs");
+  let command = "";
+  if (action === "install") command = buildHookCommand({ provider: providerId, event: provider.events[0], nodePath, scriptPath, stateDir: STATE_DIR, platform: process.platform });
+  let target;
+  try { target = editAgentHookConfig(providerId, source, { command, uninstall: action === "uninstall" }); }
+  catch (error) { throw new HttpError(409, error.message); }
+  return { provider, file, source, target, action, fingerprint: hookPlanFingerprint(providerId, source, target, action) };
+}
+
 async function handleApi(req, res, url) {
   const route = `${req.method} ${url.pathname}`;
 
@@ -131,6 +184,57 @@ async function handleApi(req, res, url) {
 
   if (route === "GET /api/agents/sessions") {
     return sendJson(res, 200, { sessions: listSessions() });
+  }
+
+  if (route === "DELETE /api/agents/sessions") {
+    clearAgentSessions();
+    return sendJson(res, 200, { ok: true, sessions: [] });
+  }
+
+  if (route === "GET /api/agents/providers") {
+    return sendJson(res, 200, { providers: agentHookSettings() });
+  }
+
+  if (route === "POST /api/agents/hooks/preview") {
+    const body = await readBody(req);
+    const plan = makeAgentHookPlan(body.provider, body.action);
+    let diff;
+    try { diff = previewDiff(plan.source, plan.target); }
+    catch (error) { throw new HttpError(409, error.message); }
+    return sendJson(res, 200, {
+      ok: true,
+      provider: plan.provider.provider,
+      action: plan.action,
+      settingsPath: plan.file,
+      fingerprint: plan.fingerprint,
+      diff,
+    });
+  }
+
+  if (route === "POST /api/agents/hooks/apply") {
+    const body = await readBody(req);
+    const plan = makeAgentHookPlan(body.provider, body.action);
+    if (typeof body.fingerprint !== "string" || body.fingerprint !== plan.fingerprint) {
+      return sendJson(res, 409, { ok: false, message: "Agent settings changed since the preview. Review a fresh diff before continuing." });
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backup = `${plan.file}.max-backup-${stamp}`;
+    try { writeAgentConfigAtomically(plan.file, plan.target, backup); }
+    catch { throw new HttpError(500, "MAX could not safely update that agent settings file. The original was left in place."); }
+    appendActivity({ kind: "command", title: `${plan.action === "install" ? "Installed" : "Removed"} MAX hooks for ${plan.provider.provider}` });
+    return sendJson(res, 200, { ok: true, action: plan.action, providers: agentHookSettings(), backup: fs.existsSync(backup) ? backup : null });
+  }
+
+  if (route === "POST /api/agents/replies/preview") {
+    const body = await readBody(req);
+    const preview = prepareAgentReply({ provider: body.provider, sessionId: body.sessionId, requestId: body.requestId, text: body.text });
+    return sendJson(res, preview.ok ? 200 : 409, preview);
+  }
+
+  if (route === "POST /api/agents/replies/confirm") {
+    const body = await readBody(req);
+    const result = await confirmAgentReply(body.confirmationId);
+    return sendJson(res, result.ok ? 200 : 409, result);
   }
 
   if (route === "POST /api/agents/events") {
@@ -463,6 +567,7 @@ export function startServer({ port = DEFAULT_PORT, host = DEFAULT_HOST } = {}) {
       console.log(`[max] ui: ${DIST}`);
       console.log(`[max] notes: ${loadConfig().saveDir}`);
       boundPort = actualPort;
+      try { publishAgentRuntime(actualPort); } catch { /* agent hooks are optional; never block the main service */ }
       resolve({ server, port: actualPort, close: () => new Promise((done) => server.close(done)) });
     };
     server.once("error", onError);

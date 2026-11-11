@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, nativeImage, screen, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, Tray, globalShortcut, nativeImage, screen, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -524,6 +524,22 @@ if (!singleInstance) {
       app.quit();
     });
 
+    handleChannel("max:choose-project", async () => {
+      if (!win || win.isDestroyed()) return { ok: false, message: "MAX window is unavailable." };
+      const result = await dialog.showOpenDialog(win, { properties: ["openDirectory", "createDirectory"] });
+      if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
+      return { ok: true, path: result.filePaths[0] };
+    });
+    handleChannel("max:open-project-folder", async (_event, folder) => {
+      if (typeof folder !== "string" || folder.length > 2048 || !path.isAbsolute(folder)) return { ok: false, message: "Choose a valid project folder." };
+      try {
+        if (!fs.statSync(folder).isDirectory()) return { ok: false, message: "That path is not a folder." };
+      } catch {
+        return { ok: false, message: "That folder is no longer available." };
+      }
+      const error = await shell.openPath(folder);
+      return error ? { ok: false, message: "Windows couldn't open that project folder." } : { ok: true };
+    });
     handleChannel("max:update-status", () => updateStatus());
     on("max:update-check", () => void checkForUpdates());
     on("max:update-install", () => installUpdate());

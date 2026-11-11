@@ -163,13 +163,25 @@ jobs:
           if (-not $installer) { Say error "no NSIS installer in release/"; exit 1 }
           Say notice ("installer {0} {1:N1} MB" -f $installer.Name, ($installer.Length / 1MB))
 
-          # A 79 MB NSIS installer occasionally dies with an access violation on a
-          # fresh runner while Defender is still scanning it. That is the runner,
-          # not the build, so the install is attempted twice before failing.
+          # Hosted Windows runners sometimes crash the NSIS bootstrapper with
+          # 0xC0000005 while Defender scans this freshly built, large installer.
+          # Exclude only this job-local installer during the install smoke test;
+          # the runner is disposable and the exclusion is removed immediately after.
+          $defenderExcluded = $false
+          try {
+            Add-MpPreference -ExclusionPath $installer.FullName -ErrorAction Stop
+            $defenderExcluded = $true
+            Say notice "temporarily excluded this freshly-built installer from Defender scanning"
+          } catch {
+            Say warning "could not set a narrow Defender exclusion: $($_.Exception.Message)"
+          }
+
           $exit = 'unknown'
+          $nsisLog = Join-Path $env:RUNNER_TEMP 'max-nsis-install.log'
           for ($attempt = 1; $attempt -le 2; $attempt++) {
+            Remove-Item $nsisLog -Force -ErrorAction SilentlyContinue
             try {
-              $proc = Start-Process -FilePath $installer.FullName -ArgumentList '/S', '/currentuser' -PassThru
+              $proc = Start-Process -FilePath $installer.FullName -ArgumentList '/S', '/currentuser', "/LOG=$nsisLog" -PassThru
               $proc.WaitForExit(300000) | Out-Null
               $exit = $proc.ExitCode
             } catch {
@@ -177,9 +189,22 @@ jobs:
               $exit = 'threw'
             }
             Say notice "installer attempt ${attempt} exit code: $exit"
+            if (Test-Path $nsisLog) {
+              Get-Content $nsisLog -Tail 30 | ForEach-Object { Say notice "NSIS: $_" }
+            } else {
+              Say warning "NSIS did not create its install log"
+            }
             if ($exit -eq 0) { break }
             if (Test-Path (Join-Path (Join-Path $env:LOCALAPPDATA 'Programs\MAX') 'MAX.exe')) { break }
             Start-Sleep -Seconds 10
+          }
+          if ($defenderExcluded) {
+            try {
+              Remove-MpPreference -ExclusionPath $installer.FullName -ErrorAction Stop
+              Say notice "removed temporary Defender exclusion"
+            } catch {
+              Say warning "could not remove temporary Defender exclusion before runner cleanup: $($_.Exception.Message)"
+            }
           }
 
           # Ask Windows where it went; guessing the path is how this check lied before.
