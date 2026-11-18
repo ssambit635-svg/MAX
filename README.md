@@ -24,29 +24,18 @@ MAX is **not** a generative AI, voice assistant, code agent, or replacement for 
 
 ## A quick visual
 
-The diagram below describes the real interaction model—not a screenshot or product mockup:
+This is the actual interaction and trust boundary—not a screenshot or product mockup:
 
-```text
-       Ctrl / ⌘ + K
-             │
-             ▼
-┌──────────────────────────────┐
-│ MAX island                   │
-│ palette · notes · focus      │
-│ projects · code · sessions   │
-└──────────────┬───────────────┘
-               │ typed, allowlisted request
-               ▼
-┌──────────────────────────────┐
-│ Local MAX service            │
-│ rules · file guards · state  │
-└─────┬──────────────────┬─────┘
-      │                  │
-      ▼                  ▼
-Your device         Optional services
-notes, settings,    GitHub · LeetCode ·
-project paths,      Render · agent CLIs
-session metadata    (only when configured)
+```mermaid
+flowchart LR
+  person[Developer] -->|Keyboard and mouse| ui[React island UI]
+  ui <-->|Local API and event stream| service[Local MAX service]
+  ui <-->|Narrow IPC bridge| shell[Electron desktop shell]
+  shell -->|Window, tray, folder picker| os[Windows desktop]
+  service -->|Local reads and writes| data[(Notes, settings, shortcuts)]
+  service <-->|Only when configured| integrations[GitHub · LeetCode · Render]
+  hook[Opt-in provider lifecycle hook] -->|Authenticated local event| service
+  service -->|Confirmed documented resume only| cli[Supported local agent CLI]
 ```
 
 ### Screenshots and demo video
