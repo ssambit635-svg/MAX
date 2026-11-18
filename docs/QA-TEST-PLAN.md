@@ -108,6 +108,19 @@ Test each command separately and check both the toast/result and the real-world 
 
 # Phase 5 — Notes, tasks, focus, and “what was I doing?”
 
+## 5.1 Work checkpoints (typed and dictated)
+
+1. Save a project shortcut first, then create a checkpoint with a short title, that project, a next step, and a typed note.
+2. Confirm the checkpoint appears in the list, survives a MAX restart, and shows the correct project/title/next step. Verify no audio or text is saved until you press **Save checkpoint**.
+3. Select **Start local dictation** in the Windows desktop app. Choose a speech language that is installed in Windows (English US or Hindi India), speak a harmless test sentence, and confirm text is added to the editable notes field.
+4. Correct a deliberately misheard word, click **Stop dictation**, and verify listening ends. Save the checkpoint explicitly, restart MAX, and confirm only the edited transcript and chosen checkpoint fields remain.
+5. Create a fresh voice draft and cancel/leave without saving. Confirm it does not appear among saved checkpoints. Disconnect the network and dictate a short sentence; local recognition should still work if the local Windows recognizer is installed and permitted.
+6. Click **Resume checkpoint**. Confirm the chosen folder opens in the file manager and the next step is copied. Remove the checkpoint and confirm it disappears.
+7. In a browser preview or non-Windows build, confirm local dictation is clearly unavailable and no browser/cloud recognizer starts.
+
+**Expected/known limit:** dictation uses the installed local Windows `System.Speech` recognizer and microphone access; it stores no audio and is limited to 90 seconds per capture. Hindi/English quality depends on the corresponding local recognizer being installed. This sandbox cannot certify real microphone quality—test it on the actual Windows machine and mark it **BLOCKED** if no compatible speech recognizer is installed.
+
+
 1. Save a harmless note (example: `save note QA scratch note`) and verify it appears in MAX's recent saves and as a Markdown file in the configured notes folder.
 2. Restart MAX and confirm the saved note remains. Search notes using a known word; confirm unrelated files are not modified.
 3. Add a harmless capture/task using the supported command shown by `help` or suggestions. Mark the task complete if the UI offers it. Confirm the digest describes actual saved activity, not fabricated events.

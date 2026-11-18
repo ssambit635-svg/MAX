@@ -11,6 +11,13 @@ contextBridge.exposeInMainWorld("maxShell", {
   openExternal: (url) => ipcRenderer.send("max:open-external", url),
   chooseProjectFolder: () => ipcRenderer.invoke("max:choose-project"),
   openProjectFolder: (folder) => ipcRenderer.invoke("max:open-project-folder", folder),
+  startVoiceCapture: (language) => ipcRenderer.invoke("max:voice-start", language),
+  stopVoiceCapture: () => ipcRenderer.invoke("max:voice-stop"),
+  onVoiceEvent: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on("max:voice-event", handler);
+    return () => ipcRenderer.removeListener("max:voice-event", handler);
+  },
   updateStatus: () => ipcRenderer.invoke("max:update-status"),
   checkForUpdates: () => ipcRenderer.send("max:update-check"),
   installUpdate: () => ipcRenderer.send("max:update-install"),

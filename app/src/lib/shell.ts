@@ -1,3 +1,10 @@
+export interface VoiceDictationEvent {
+  type: "text" | "status" | "error";
+  text?: string;
+  state?: "listening" | "stopped";
+  code?: string;
+}
+
 export interface MaxShellBridge {
   isDesktop: boolean;
   platform: string;
@@ -9,6 +16,9 @@ export interface MaxShellBridge {
   openExternal: (url: string) => void;
   chooseProjectFolder: () => Promise<{ ok: boolean; path?: string; canceled?: boolean; message?: string }>;
   openProjectFolder: (folder: string) => Promise<{ ok: boolean; message?: string }>;
+  startVoiceCapture?: (language: "en-US" | "hi-IN") => Promise<{ ok: boolean; message?: string }>;
+  stopVoiceCapture?: () => Promise<void>;
+  onVoiceEvent?: (callback: (event: VoiceDictationEvent) => void) => () => void;
   setLoginItem: (enabled: boolean) => void;
   updateStatus: () => Promise<{ state: string; version: string | null; message: string }>;
   checkForUpdates: () => void;
