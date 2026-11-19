@@ -1,5 +1,6 @@
 import { Pet } from "./Pet";
 import { ProjectsView } from "./ProjectsView";
+import { CheckpointsView } from "./CheckpointsView";
 import { clockTime, durationLabel, timeAgo } from "../lib/format";
 import type { Mood, StatePayload } from "../lib/types";
 
@@ -67,6 +68,7 @@ export function NowView({
       </div>
 
       <ProjectsView onNotice={onNotice} />
+      <CheckpointsView onNotice={onNotice} />
 
       <div className="grid" style={{ alignContent: "start" }}>
         <div className="card">

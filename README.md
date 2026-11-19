@@ -48,6 +48,7 @@ This repository does not currently contain verified screenshots or a screen-reco
 | --- | --- |
 | **Command palette** | Fuzzy suggestions, keyboard navigation, allowlisted app launches, and a small local history of successful commands. `Ctrl+K` opens it; `Esc` closes it. |
 | **Project shortcuts** | Save up to 12 project folder names and paths on this device. In the desktop app, open a shortcut in the file manager; in browser preview, copy its path. These are bookmarks, not full editor/terminal launch configurations. |
+| **Work checkpoints** | Save a project-linked title, next step, and typed or dictated handoff note; resume by opening the chosen folder and copying the next step. Checkpoints stay in this browser/app profile. |
 | **Notes and capture** | Save Markdown notes, capture a thought or task, search notes, and review a daily digest. |
 | **Focus** | Start a focus block or timer and see its status in the island. |
 | **Code utilities** | Review supported source files with lightweight rules, scan a bounded project folder, manage snippets, and apply only safe mechanical fixes. This is not a compiler or security auditor. |
@@ -67,6 +68,7 @@ Direct replies use documented resume forms for supported Codex and Gemini CLI pa
 - Notes, settings, project shortcuts, command history, and session snippets are stored locally. Project shortcuts and palette history use the current browser/app profile; server state is held in MAX's local state directory.
 - External integrations make network requests only when you configure/use them. GitHub, LeetCode, and Render data therefore require internet access.
 - Agent lifecycle events are sent to the local MAX service using a local token. Session snippets are kept in memory and can be cleared.
+- Voice dictation is an explicit push-to-start action in the Windows desktop app. It uses the installed Windows `System.Speech` recognizer, does not save audio, and stops when you press **Stop dictation** (or after its 90-second limit). It requires the selected Windows speech recognizer and microphone access; voice data is not sent to MAX's network integrations. A fixed, packaged helper runs in a short-lived PowerShell process with a process-only execution-policy override; MAX does not change the user's persistent PowerShell policy or execute dictated text as commands.
 - Review the [security notes](docs/SECURITY.md) and [agent-session contract](docs/AGENT-SESSIONS.md) before connecting credentials or changing provider settings.
 
 “Local-first” does not mean every feature is offline: integrations need the network, provider CLIs are separate software, and MAX cannot guarantee how those tools use their own configured permissions.

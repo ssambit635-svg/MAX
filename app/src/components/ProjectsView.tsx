@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { shellBridge } from "../lib/shell";
 
 type Project = { name: string; path: string };
@@ -18,11 +18,6 @@ export function ProjectsView({ onNotice }: { onNotice: (text: string, tone: "ok"
   const [name, setName] = useState("");
   const [folder, setFolder] = useState("");
   const bridge = shellBridge();
-
-  useEffect(() => {
-    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); }
-    catch { onNotice("MAX couldn't save project shortcuts in this browser profile.", "error"); }
-  }, [projects]);
 
   async function chooseFolder() {
     if (!bridge) {
@@ -44,10 +39,21 @@ export function ProjectsView({ onNotice }: { onNotice: (text: string, tone: "ok"
       return;
     }
     const next = [{ name: cleanName, path: cleanPath }, ...projects.filter((project) => project.path !== cleanPath)].slice(0, 12);
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); }
+    catch { onNotice("MAX couldn't save project shortcuts in this browser profile.", "error"); return; }
     setProjects(next);
+    window.dispatchEvent(new Event("max:projects-updated"));
     setName("");
     setFolder("");
     onNotice(`Saved ${cleanName} on this device.`, "ok");
+  }
+
+  function removeProject(folderPath: string) {
+    const next = projects.filter((project) => project.path !== folderPath);
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); }
+    catch { onNotice("MAX couldn't update project shortcuts in this browser profile.", "error"); return; }
+    setProjects(next);
+    window.dispatchEvent(new Event("max:projects-updated"));
   }
 
   async function open(project: Project) {
@@ -71,7 +77,7 @@ export function ProjectsView({ onNotice }: { onNotice: (text: string, tone: "ok"
     </div>
     {projects.length > 0 ? <div className="project-list">{projects.map((project) => <div className="project-row" key={project.path}>
       <button className="project-open" onClick={() => void open(project)}><strong>{project.name}</strong><small title={project.path}>{project.path}</small></button>
-      <button className="text-link" aria-label={`Remove ${project.name}`} onClick={() => setProjects((items) => items.filter((item) => item.path !== project.path))}>remove</button>
+      <button className="text-link" aria-label={`Remove ${project.name}`} onClick={() => removeProject(project.path)}>remove</button>
     </div>)}</div> : <div className="empty">Your saved project folders will appear here.</div>}
   </div>;
 }

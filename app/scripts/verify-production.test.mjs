@@ -444,7 +444,7 @@ const PLATFORM_RULES = [
   // A Windows-only command is fine in a file that genuinely handles all three
   // platforms; the rule below proves that, line by line, instead of trusting a name.
   { pattern: /\btaskkill\b/, allow: ["server/apps.mjs"], branches: true, why: "taskkill is Windows-only; wrap it in a platform branch" },
-  { pattern: /\bpowershell\b|\bpwsh\b/i, allow: ["server/apps.mjs"], branches: true, why: "PowerShell is Windows-only" },
+  { pattern: /\bpowershell\b|\bpwsh\b/i, allow: ["server/apps.mjs", "electron/dictation.mjs"], branches: true, why: "PowerShell is Windows-only" },
   { pattern: /\bcmd\.exe\b/i, allow: ["server/apps.mjs"], branches: true, why: "cmd.exe is Windows-only" },
   { pattern: /["'`]C:\\\\/, allow: [], why: "hard-coded Windows path" },
   { pattern: /process\.env\.USERPROFILE(?!\s*\?\?)/, allow: [], why: "USERPROFILE without a HOME fallback" },
@@ -588,6 +588,8 @@ await test("the packaged app would contain everything it needs", async () => {
     if (!files.includes(required)) problems.push(`build.files is missing ${required}`);
   }
   if (!unpack.includes("server/**")) problems.push("asarUnpack must include server/** or the service cannot be imported");
+  if (!files.includes("electron/**")) problems.push("build.files must include the desktop shell and preload");
+  if (!fs.existsSync(path.join(APP, "server/voice/windows-dictation.ps1"))) problems.push("the packaged local dictation helper is missing");
   if (!unpack.some((entry) => entry.startsWith("dist"))) problems.push("asarUnpack must include the built UI");
   if (!fs.existsSync(path.join(APP, "build/icon.ico"))) problems.push("build/icon.ico is missing");
   if (!fs.existsSync(path.join(APP, "dist/index.html"))) problems.push("dist/index.html is missing — run the build");

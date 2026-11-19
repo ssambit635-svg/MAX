@@ -4174,3 +4174,21 @@ body[data-motion="reduced"] .panel__top {
 .project-open strong { font-size: 12px; font-weight: 600; }
 .project-open small { overflow: hidden; color: var(--text-2, #aaa); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 480px) { .project-form { grid-template-columns: 1fr; } .project-path { grid-column: 1; } }
+
+/* Work checkpoints and push-to-dictate controls */
+.checkpoint-form { display: grid; gap: 9px; margin: 10px 0 14px; }
+.checkpoint-form > label { display: grid; gap: 5px; color: var(--text-2, #aaa); font-size: 11px; }
+.checkpoint-form input, .checkpoint-form select, .checkpoint-form textarea, .checkpoint-voice select { min-width: 0; padding: 8px 10px; border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 9px; color: var(--text, #f4f1ea); background: rgba(255,255,255,.04); font: inherit; }
+.checkpoint-form select option, .checkpoint-voice select option { color: #f4f1ea; background: #17191c; }
+.checkpoint-form textarea { min-height: 72px; resize: vertical; }
+.checkpoint-voice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.checkpoint-voice > label { color: var(--text-2, #aaa); font-size: 11px; }
+.checkpoint-voice .hint { flex-basis: 100%; }
+.checkpoint-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.checkpoint-list { display: grid; gap: 8px; }
+.checkpoint-card { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line, rgba(255,255,255,.08)); border-radius: 12px; background: rgba(255,255,255,.025); }
+.checkpoint-card__head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.checkpoint-card__head strong { overflow-wrap: anywhere; font-size: 12px; }
+.checkpoint-card__head time { flex: none; color: var(--text-2, #aaa); font-size: 10px; }
+.checkpoint-card p { margin: 0; font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.checkpoint-notes { color: var(--text-2, #aaa); white-space: pre-wrap; }

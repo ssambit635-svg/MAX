@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, Tray, globalShortcut, nativeImage, screen, shell } from "electron";
+import { createWindowsDictation } from "./dictation.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -30,6 +31,7 @@ let serverStarted = false;
 let startupFailure = null;
 let dragOrigin = null;
 let dragWatchdog = null;
+let dictation = null;
 
 /**
  * One registrar for every channel. `channels` (the function) is rebuilt when the
@@ -43,7 +45,16 @@ let channels = createChannelRegistrar({
 const on = (channel, handler) => channels.on(channel, handler);
 const handleChannel = (channel, handler) => channels.handle(channel, handler);
 
-/** The only hosts the island links to, checked again in the shell. */
+function emitVoiceEvent(payload) {
+  try {
+    if (win && !win.isDestroyed()) win.webContents.send("max:voice-event", payload);
+  } catch { /* a closed renderer must not destabilize the desktop process */ }
+}
+
+function stopVoiceRecognition() {
+  return dictation?.stop() ?? Promise.resolve();
+}
+
 const TRUSTED_LINK_HOSTS = new Set(["github.com", "www.github.com", "leetcode.com", "www.leetcode.com", "render.com", "dashboard.render.com"]);
 
 /** One gate for every way out of the island: the bridge, new windows, navigation. */
@@ -293,6 +304,7 @@ function createWindow() {
   });
 
   win.on("closed", () => {
+    void stopVoiceRecognition();
     win = null;
   });
 
@@ -300,6 +312,7 @@ function createWindow() {
   // always-on-top window: reload once, and give up quietly if it keeps happening.
   let recoveries = [];
   const recover = (reason) => {
+    void stopVoiceRecognition();
     const now = Date.now();
     recoveries = recoveries.filter((at) => now - at < 60_000);
     recoveries.push(now);
@@ -308,6 +321,7 @@ function createWindow() {
     if (!startupFailure) win?.loadURL(`${BASE_URL}/?shell=desktop`);
   };
   win.webContents.on("render-process-gone", (_event, details) => {
+    void stopVoiceRecognition();
     if (details?.reason === "clean-exit") return;
     recover(`the renderer stopped (${details?.reason ?? "unknown"})`);
   });
@@ -438,6 +452,11 @@ if (!singleInstance) {
     channels = createChannelRegistrar({ bus: ipcMain, onError: reportShellFailure, log });
     log("info", `MAX starting ${app.getVersion()} on ${process.platform} ${process.arch}`);
     await startServer();
+    dictation = createWindowsDictation({
+      platform: process.platform,
+      scriptPath: path.join(SERVER_ROOT, "server", "voice", "windows-dictation.ps1"),
+      onEvent: emitVoiceEvent,
+    });
     createWindow();
     createTray();
     void initUpdater();
@@ -540,6 +559,8 @@ if (!singleInstance) {
       const error = await shell.openPath(folder);
       return error ? { ok: false, message: "Windows couldn't open that project folder." } : { ok: true };
     });
+    handleChannel("max:voice-start", (_event, language) => dictation.start(language));
+    handleChannel("max:voice-stop", async () => { await stopVoiceRecognition(); return { ok: true }; });
     handleChannel("max:update-status", () => updateStatus());
     on("max:update-check", () => void checkForUpdates());
     on("max:update-install", () => installUpdate());
@@ -556,6 +577,8 @@ if (!singleInstance) {
 
   app.on("before-quit", () => {
     quitting = true;
+    dictation?.dispose();
+    dictation = null;
     stopUpdater();
     globalShortcut.unregisterAll();
   });
